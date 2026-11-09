@@ -121,15 +121,15 @@
         pattern: /(?:^|[-_.\s])(?:x86_64|amd64|x64)(?=$|[-_.\s])/i,
       },
       {
-        id: 'arm64',
-        name: 'ARM64',
-        pattern: /(?:^|[-_.\s])(?:arm64|aarch64)(?=$|[-_.\s])/i,
-      },
-      {
         id: 'x86',
         name: 'x86',
         pattern:
           /(?:^|[-_.\s])(?:x86(?![-_.]?64)|x32|i[3-6]86|386)(?=$|[-_.\s])/i,
+      },
+      {
+        id: 'arm64',
+        name: 'ARM64',
+        pattern: /(?:^|[-_.\s])(?:arm64|aarch64)(?=$|[-_.\s])/i,
       },
       {
         id: 'arm',
@@ -1155,11 +1155,20 @@
   let saveFeedbackTimer = null;
 
   function savePreference() {
+    const { typeCounts } = getStats();
+    const prunedTypes = {};
+    Object.entries(selectedPackageTypes).forEach(([platformId, types]) => {
+      const counts = typeCounts[platformId] || {};
+      const kept = types.filter((typeId) => (counts[typeId] || 0) > 0);
+      if (kept.length) prunedTypes[platformId] = kept;
+    });
+    selectedPackageTypes = prunedTypes;
     GM_setValue(STORAGE_KEY, selectedCategories);
     GM_setValue(ARCH_STORAGE_KEY, selectedArchitectures);
     GM_setValue(TYPE_STORAGE_KEY, selectedPackageTypes);
     GM_setValue(ORDER_STORAGE_KEY, platformOrder);
     GM_setValue(FILTER_SCHEMA_KEY, FILTER_SCHEMA_VERSION);
+    syncPanel();
     if (!saveButtonEl) return;
     saveButtonEl.textContent = '已保存';
     saveButtonEl.classList.add('saved');
