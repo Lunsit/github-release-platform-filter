@@ -2,7 +2,7 @@
 // @name         GitHub发布平台筛选器
 // @name:en      GitHub Release Platform Filter
 // @namespace    https://github.com/eecopilot
-// @version      0.4.4
+// @version      0.4.5
 // @description  按平台、架构与类别筛选GitHub发布资源，优化发布说明显示，适配明暗主题
 // @description:en  Filter GitHub release assets by platform, architecture and category, collapse long release notes, with light/dark theme support
 // @author       EEP
