@@ -532,6 +532,11 @@
       flex-direction: column;
     }
 
+    .platform-entry[hidden],
+    .platform-divider[hidden] {
+      display: none;
+    }
+
     .platform-arches {
       display: grid;
       grid-template-rows: 0fr;
@@ -1069,6 +1074,14 @@
     let changed = false;
     let stats = getStats();
 
+    const nextCategories = selectedCategories.filter(
+      (id) => (stats.counts[id] || 0) > 0
+    );
+    if (nextCategories.length !== selectedCategories.length) {
+      selectedCategories = nextCategories;
+      changed = true;
+    }
+
     const nextArchs = {};
     Object.entries(selectedArchitectures).forEach(([platformId, archs]) => {
       const counts = stats.archCounts[platformId] || {};
@@ -1288,6 +1301,7 @@
 
       const archData = archEls.get(platform.id);
       if (!archData) return;
+      archData.entry.hidden = counts[platform.id] === 0;
       archData.entry.classList.toggle('selected', active);
       if (archData.moveButtons) {
         const orderIndex = platformOrder.indexOf(platform.id);
@@ -1339,10 +1353,17 @@
       const countEl = countEls.get(category.id);
       if (!option || !countEl) return;
       const active = selectedCategories.includes(category.id);
+      const entry = option.closest('.platform-entry');
+      if (entry) entry.hidden = counts[category.id] === 0;
       option.classList.toggle('selected', active);
       option.setAttribute('aria-checked', String(active));
       countEl.textContent = String(counts[category.id]);
     });
+
+    const divider = dropdown.querySelector('.platform-divider');
+    if (divider) {
+      divider.hidden = !(counts.other > 0 || counts.source > 0);
+    }
   }
 
   function openDropdown() {
