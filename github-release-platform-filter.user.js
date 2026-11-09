@@ -2,630 +2,889 @@
 // @name         GitHub发布平台筛选器
 // @name:en      GitHub Release Platform Filter
 // @namespace    https://github.com/eecopilot
-// @version      0.3.3
-// @description  筛选GitHub发布资源的平台，优化发布说明显示
-// @description:en  Filter GitHub release assets by platform and optimize release notes display
+// @version      0.4.0
+// @description  筛选GitHub发布资源的平台，优化发布说明显示，适配明暗主题
+// @description:en  Filter GitHub release assets by platform, collapse long release notes, with light/dark theme support
 // @author       EEP
+// @contributor  Lunsit
 // @match        https://github.com/*
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @license      MIT
-// @homepage     https://github.com/eecopilot/github-release-platform-filter
-// @supportURL   https://github.com/eecopilot/github-release-platform-filter/issues
+// @homepage     https://github.com/Lunsit/github-release-platform-filter
+// @supportURL   https://github.com/Lunsit/github-release-platform-filter/issues
+// @downloadURL  https://raw.githubusercontent.com/Lunsit/github-release-platform-filter/main/github-release-platform-filter.user.js
+// @updateURL    https://raw.githubusercontent.com/Lunsit/github-release-platform-filter/main/github-release-platform-filter.user.js
+// @run-at       document-idle
 // ==/UserScript==
 
 (function () {
   'use strict';
-  document.addEventListener('click', (e) => {
-    const summary = e.target.closest(
-      '[data-target="details-toggle.summaryTarget"]'
-    );
-    if (summary) {
-      // 当aria-label="Expand"，表示assets没有加载资源
-      // 点击后，assets加载资源
-      if (summary.getAttribute('aria-label') !== 'Expand') {
-        // 监听assets列表的变化
-        const assetsContainer = summary.nextElementSibling;
-        if (
-          assetsContainer &&
-          assetsContainer.getAttribute('data-view-component') === 'true'
-        ) {
-          const observer = new MutationObserver((mutations) => {
-            // 当assets列表加载完成后进行过滤
-            filterAssets(assetsContainer);
-          });
 
-          observer.observe(assetsContainer, {
-            childList: true,
-            subtree: true,
-          });
-        }
-      }
-    }
-  });
-  // 样式定义
-  const styles = `
-        .markdown-body.my-3 {
-            position: relative;
-            max-height: 300px;
-            overflow: hidden;
-            transition: max-height 0.3s ease-in-out;
-            padding-bottom: 40px;
-        }
-        .markdown-body.my-3.expanded {
-            max-height: none;
-            padding-bottom: 40px;
-        }
-        .toggle-button {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            text-align: center;
-            padding: 10px;
-            cursor: pointer;
-            color: #0366d6;
-            font-weight: 600;
-            width: 100%;
-            margin: 0;
-            height: 40px;
-            box-sizing: border-box;
-            background: none;
-        }
-        .markdown-body.my-3:not(.expanded) .toggle-button {
-            background: linear-gradient(rgba(255, 255, 255, 0), rgb(202 202 202));
-        }
-        .markdown-body.my-3.expanded .toggle-button {
-            border-top: 1px solid #e1e4e8;
-        }
-        .toggle-button:hover {
-            text-decoration: underline;
-        }
-        .platform-filter {
-            position: fixed;
-            top: 60px;
-            right: -1px;
-            z-index: 1000;
-            background: white;
-            border-radius: 6px 0 0 6px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.12);
-            transition: all 0.2s ease;
-            overflow: visible;
-        }
-        .platform-filter:hover {
-            right: 0;
-        }
-        .platform-filter-button {
-            padding: 8px;
-            border: 1px solid #d1d5da;
-            border-right: 0;
-            border-radius: 6px 0 0 6px;
-            background-color: #f6f8fa;
-            color: #24292e;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            font-size: 14px;
-            font-weight: 500;
-            white-space: nowrap;
-            transition: all 0.2s ease;
-            min-width: 36px;
-            margin-right: -1px;
-        }
-        .platform-filter-button span {
-            width: 0;
-            overflow: hidden;
-            opacity: 0;
-            transition: all 0.2s ease;
-        }
-        .platform-filter:hover .platform-filter-button {
-            padding: 8px 12px;
-        }
-        .platform-filter:hover .platform-filter-button span {
-            width: auto;
-            opacity: 1;
-            margin-left: 4px;
-        }
-        .platform-filter-button:hover {
-            background-color: #f3f4f6;
-            border-color: #bbb;
-        }
-        .platform-filter-button svg {
-            width: 16px;
-            height: 16px;
-            flex-shrink: 0;
-        }
-        .platform-dropdown {
-            position: absolute;
-            top: 100%;
-            right: 0;
-            margin-top: 4px;
-            background: white;
-            border: 1px solid #e1e4e8;
-            border-radius: 6px;
-            box-shadow: 0 8px 24px rgba(149,157,165,0.2);
-            display: none;
-            min-width: 120px;
-            z-index: 100;
-        }
-        .platform-dropdown.show {
-            display: block;
-        }
-        .platform-option {
-            padding: 8px 16px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 14px;
-        }
-        .platform-option:hover {
-            background-color: #f6f8fa;
-        }
-        .platform-option.selected {
-            background-color: #f1f8ff;
-            color: #0366d6;
-        }
-        .platform-option:first-child {
-            border-radius: 6px 6px 0 0;
-        }
-        .platform-option:last-child {
-            border-radius: 0 0 6px 6px;
-        }
-        .platform-option svg {
-            width: 16px;
-            height: 16px;
-        }
-        .hidden-asset {
-            display: none !important;
-        }
-        .Box-row.d-flex.flex-column.flex-md-row.hidden-asset {
-            display: none !important;
-            visibility: hidden !important;
-            height: 0 !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            opacity: 0 !important;
-        }
-    `;
+  const STORAGE_KEY = 'selectedPlatforms';
+  const COLLAPSE_LIMIT = 300;
+  const ASSET_ROW_SELECTOR =
+    '.Box--condensed .Box-row.d-flex.flex-column.flex-md-row';
+  const RELEASE_BODY_SELECTOR =
+    '.markdown-body.my-3, .markdown-body.tmp-my-3, [data-test-selector="body-content"].markdown-body';
 
-  // 添加SVG图标
   const ICONS = {
-    settings: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="12" cy="12" r="3"/>
-    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-  </svg>`,
+    filter: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 5h17l-6.6 7.6V20l-3.8-2.1v-5.3L3.5 5Z"/></svg>`,
+    windows: `<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M6.555 1.375 0 2.237v5.45h6.555zM0 13.795l6.555.933V8.313H0zm7.278-5.4.026 6.378L16 16V8.395zM16 0 7.33 1.244v6.414H16z"/></svg>`,
+    apple: `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg>`,
+    linux: `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.504 0c-.155 0-.315.008-.48.021-4.226.333-3.105 4.807-3.17 6.298-.076 1.092-.3 1.953-1.05 3.02-.885 1.051-2.127 2.75-2.716 4.521-.278.832-.41 1.684-.287 2.489a.424.424 0 00-.11.135c-.26.268-.45.6-.663.839-.199.199-.485.267-.797.4-.313.136-.658.269-.864.68-.09.189-.136.394-.132.602 0 .199.027.4.055.536.058.399.116.728.04.97-.249.68-.28 1.145-.106 1.484.174.334.535.47.94.601.81.2 1.91.135 2.774.6.926.466 1.866.67 2.616.47.526-.116.97-.464 1.208-.946.587-.003 1.23-.269 2.26-.334.699-.058 1.574.267 2.577.2.025.134.063.198.114.333l.003.003c.391.778 1.113 1.132 1.884 1.071.771-.06 1.592-.536 2.257-1.306.631-.765 1.683-1.084 2.378-1.503.348-.199.629-.469.649-.853.023-.4-.2-.811-.714-1.376v-.097l-.003-.003c-.17-.2-.25-.535-.338-.926-.085-.401-.182-.786-.492-1.046h-.003c-.059-.054-.123-.067-.188-.135a.357.357 0 00-.19-.064c.431-1.278.264-2.55-.173-3.694-.533-1.41-1.465-2.638-2.175-3.483-.796-1.005-1.576-1.957-1.56-3.368.026-2.152.236-6.133-3.544-6.139zm.529 3.405h.013c.213 0 .396.062.584.198.19.135.33.332.438.533.105.259.158.459.166.724 0-.02.006-.04.006-.06v.105a.086.086 0 01-.004-.021l-.004-.024a1.807 1.807 0 01-.15.706.953.953 0 01-.213.335.71.71 0 00-.088-.042c-.104-.045-.198-.064-.284-.133a1.312 1.312 0 00-.22-.066c.05-.06.146-.133.183-.198.053-.128.082-.264.088-.402v-.02a1.21 1.21 0 00-.061-.4c-.045-.134-.101-.2-.183-.333-.084-.066-.167-.132-.267-.132h-.016c-.093 0-.176.03-.262.132a.8.8 0 00-.205.334 1.18 1.18 0 00-.09.4v.019c.002.089.008.179.02.267-.193-.067-.438-.135-.607-.202a1.635 1.635 0 01-.018-.2v-.02a1.772 1.772 0 01.15-.768c.082-.22.232-.406.43-.533a.985.985 0 01.594-.2zm-2.962.059h.036c.142 0 .27.048.399.135.146.129.264.288.344.465.09.199.14.4.153.667v.004c.007.134.006.2-.002.266v.08c-.03.007-.056.018-.083.024-.152.055-.274.135-.393.2.012-.09.013-.18.003-.267v-.015c-.012-.133-.04-.2-.082-.333a.613.613 0 00-.166-.267.248.248 0 00-.183-.064h-.021c-.071.006-.13.04-.186.132a.552.552 0 00-.12.27.944.944 0 00-.023.33v.015c.012.135.037.2.08.334.046.134.098.2.166.268.01.009.02.018.034.024-.07.057-.117.07-.176.136a.304.304 0 01-.131.068 2.62 2.62 0 01-.275-.402 1.772 1.772 0 01-.155-.667 1.759 1.759 0 01.08-.668 1.43 1.43 0 01.283-.535c.128-.133.26-.2.418-.2zm1.37 1.706c.332 0 .733.065 1.216.399.293.2.523.269 1.052.468h.003c.255.136.405.266.478.399v-.131a.571.571 0 01.016.47c-.123.31-.516.643-1.063.842v.002c-.268.135-.501.333-.775.465-.276.135-.588.292-1.012.267a1.139 1.139 0 01-.448-.067 3.566 3.566 0 01-.322-.198c-.195-.135-.363-.332-.612-.465v-.005h-.005c-.4-.246-.616-.512-.686-.71-.07-.268-.005-.47.193-.6.224-.135.38-.271.483-.336.104-.074.143-.102.176-.131h.002v-.003c.169-.202.436-.47.839-.601.139-.036.294-.065.466-.065zm2.8 2.142c.358 1.417 1.196 3.475 1.735 4.473.286.534.855 1.659 1.102 3.024.156-.005.33.018.513.064.646-1.671-.546-3.467-1.089-3.966-.22-.2-.232-.335-.123-.335.59.534 1.365 1.572 1.646 2.757.13.535.16 1.104.021 1.67.067.028.135.06.205.067 1.032.534 1.413.938 1.23 1.537v-.043c-.06-.003-.12 0-.18 0h-.016c.151-.467-.182-.825-1.065-1.224-.915-.4-1.646-.336-1.77.465-.008.043-.013.066-.018.135-.068.023-.139.053-.209.064-.43.268-.662.669-.793 1.187-.13.533-.17 1.156-.205 1.869v.003c-.02.334-.17.838-.319 1.35-1.5 1.072-3.58 1.538-5.348.334a2.645 2.645 0 00-.402-.533 1.45 1.45 0 00-.275-.333c.182 0 .338-.03.465-.067a.615.615 0 00.314-.334c.108-.267 0-.697-.345-1.163-.345-.467-.931-.995-1.788-1.521-.63-.4-.986-.87-1.15-1.396-.165-.534-.143-1.085-.015-1.645.245-1.07.873-2.11 1.274-2.763.107-.065.037.135-.408.974-.396.751-1.14 2.497-.122 3.854a8.123 8.123 0 01.647-2.876c.564-1.278 1.743-3.504 1.836-5.268.048.036.217.135.289.202.218.133.38.333.59.465.21.201.477.335.876.335.039.003.075.006.11.006.412 0 .73-.134.997-.268.29-.134.52-.334.74-.4h.005c.467-.135.835-.402 1.044-.7zm2.185 8.958c.037.6.343 1.245.882 1.377.588.134 1.434-.333 1.791-.765l.211-.01c.315-.007.577.01.847.268l.003.003c.208.199.305.53.391.876.085.4.154.78.409 1.066.486.527.645.906.636 1.14l.003-.007v.018l-.003-.012c-.015.262-.185.396-.498.595-.63.401-1.746.712-2.457 1.57-.618.737-1.37 1.14-2.036 1.191-.664.053-1.237-.2-1.574-.898l-.005-.003c-.21-.4-.12-1.025.056-1.69.176-.668.428-1.344.463-1.897.037-.714.076-1.335.195-1.814.12-.465.308-.797.641-.984l.045-.022zm-10.814.049h.01c.053 0 .105.005.157.014.376.055.706.333 1.023.752l.91 1.664.003.003c.243.533.754 1.064 1.189 1.637.434.598.77 1.131.729 1.57v.006c-.057.744-.48 1.148-1.125 1.294-.645.135-1.52.002-2.395-.464-.968-.536-2.118-.469-2.857-.602-.369-.066-.61-.2-.723-.4-.11-.2-.113-.602.123-1.23v-.004l.002-.003c.117-.334.03-.752-.027-1.118-.055-.401-.083-.71.043-.94.16-.334.396-.4.69-.533.294-.135.64-.202.915-.47h.002v-.002c.256-.268.445-.601.668-.838.19-.201.38-.336.663-.336zm7.159-9.074c-.435.201-.945.535-1.488.535-.542 0-.97-.267-1.28-.466-.154-.134-.28-.268-.373-.335-.164-.134-.144-.333-.074-.333.109.016.129.134.199.2.096.066.215.2.36.333.292.2.68.467 1.167.467.485 0 1.053-.267 1.398-.466.195-.135.445-.334.648-.467.156-.136.149-.267.279-.267.128.016.034.134-.147.332a8.097 8.097 0 01-.69.468zm-1.082-1.583V5.64c-.006-.02.013-.042.029-.05.074-.043.18-.027.26.004.063 0 .16.067.15.135-.006.049-.085.066-.135.066-.055 0-.092-.043-.141-.068-.052-.018-.146-.008-.163-.065zm-.551 0c-.02.058-.113.049-.166.066-.047.025-.086.068-.14.068-.05 0-.13-.02-.136-.068-.01-.066.088-.133.15-.133.08-.031.184-.047.259-.005.019.009.036.03.03.05v.02h.003z"/></svg>`,
+    android: `<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2.76 3.061a.5.5 0 0 1 .679.2l1.283 2.352A8.9 8.9 0 0 1 8 5a8.9 8.9 0 0 1 3.278.613l1.283-2.352a.5.5 0 1 1 .878.478l-1.252 2.295C14.475 7.266 16 9.477 16 12H0c0-2.523 1.525-4.734 3.813-5.966L2.56 3.74a.5.5 0 0 1 .2-.678ZM5 10a1 1 0 1 0 0-2 1 1 0 0 0 0 2m6 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2"/></svg>`,
+    check: `<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0L3.22 8.28a.75.75 0 0 1 1.06-1.06l2.72 2.72 5.72-5.72a.75.75 0 0 1 1.06 0Z"/></svg>`,
+    chevronDown: `<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M12.78 5.22a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L3.22 6.28a.75.75 0 0 1 1.06-1.06L8 8.94l3.72-3.72a.75.75 0 0 1 1.06 0Z"/></svg>`,
+    chevronUp: `<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3.22 10.78a.75.75 0 0 1 0-1.06l4.25-4.25a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1-1.06 1.06L8 7.06l-3.72 3.72a.75.75 0 0 1-1.06 0Z"/></svg>`,
   };
 
-  function initFeaturesPanels() {
-    const panels = document.querySelectorAll('.markdown-body.my-3');
+  const PLATFORMS = [
+    {
+      id: 'windows',
+      name: 'Windows',
+      icon: ICONS.windows,
+      pattern:
+        /\.(?:exe|msi|msix|appx)\b|(?:^|[-_.\s])win(?:32|64|dows)?(?:[-_.\s]|$)/i,
+    },
+    {
+      id: 'macos',
+      name: 'macOS',
+      icon: ICONS.apple,
+      pattern:
+        /\.(?:dmg|pkg)(?![.\w])|(?:^|[-_.\s])(?:darwin|macos|osx|mac)(?:[-_.\s]|$)|mac(?:os)?[ -]?(?:arm64|x64|universal)/i,
+    },
+    {
+      id: 'linux',
+      name: 'Linux',
+      icon: ICONS.linux,
+      pattern:
+        /\.(?:deb|rpm|appimage|flatpak|snap)\b|(?:^|[-_.\s])(?:linux|ubuntu|debian|fedora|freebsd|arch)(?:[-_.\s]|$)/i,
+    },
+    {
+      id: 'android',
+      name: 'Android',
+      icon: ICONS.android,
+      pattern: /\.(?:apk|aab|apks)\b|(?:^|[-_.\s])android(?:[-_.\s]|$)/i,
+    },
+  ];
+  const PLATFORM_IDS = PLATFORMS.map((platform) => platform.id);
 
-    panels.forEach((panel) => {
-      // 检查内容高度是否需要添加展开/收起功能
-      if (panel.scrollHeight > 300) {
-        // 检查是否已经存在按钮
-        let toggleButton = panel.querySelector('.toggle-button');
+  const STYLES = `
+    :root {
+      --grpf-bg: var(--bgColor-default, #ffffff);
+      --grpf-bg-muted: var(--bgColor-muted, #f6f8fa);
+      --grpf-fg: var(--fgColor-default, #1f2328);
+      --grpf-fg-muted: var(--fgColor-muted, #59636e);
+      --grpf-accent: var(--fgColor-accent, #0969da);
+      --grpf-accent-bg: var(--bgColor-accent-muted, #ddf4ff);
+      --grpf-border: var(--borderColor-default, #d1d9e0);
+      --grpf-border-muted: var(--borderColor-muted, #d1d9e0b3);
+      --grpf-on-accent: var(--fgColor-onEmphasis, #ffffff);
+      --grpf-shadow: var(--shadow-floating-small, 0 0 0 1px rgba(31, 35, 40, 0.08), 0 8px 24px rgba(140, 149, 159, 0.2));
+    }
 
-        if (!toggleButton) {
-          // 如果不存在按钮，则创建新按钮
-          toggleButton = document.createElement('div');
-          toggleButton.className = 'toggle-button';
-          panel.appendChild(toggleButton);
-        }
+    .platform-filter {
+      position: fixed;
+      top: 76px;
+      right: 0;
+      z-index: 95;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      font-family: var(--fontStack-system, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif);
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--grpf-fg);
+    }
 
-        // 根据当前状态设置按钮文本
-        const isExpanded = panel.classList.contains('expanded');
-        toggleButton.textContent = isExpanded ? '收起' : '展开更多';
+    .platform-filter *,
+    .platform-filter *::before,
+    .platform-filter *::after {
+      box-sizing: border-box;
+    }
 
-        // 更新或添加点击事件
-        toggleButton.onclick = () => {
-          const isExpanded = panel.classList.contains('expanded');
-          panel.classList.toggle('expanded');
-          toggleButton.textContent = !isExpanded ? '收起' : '展开更多';
-          if (!isExpanded) {
-            panel.scrollIntoView({ behavior: 'smooth' });
-          }
-        };
-      }
-    });
-  }
+    .platform-filter-button {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 40px;
+      height: 40px;
+      margin: 0;
+      padding: 0 10px;
+      border: 1px solid var(--grpf-border);
+      border-right: 0;
+      border-radius: 10px 0 0 10px;
+      background: var(--grpf-bg);
+      color: var(--grpf-fg-muted);
+      box-shadow: var(--grpf-shadow);
+      font: inherit;
+      cursor: pointer;
+      user-select: none;
+      transition: color 0.15s ease, background-color 0.15s ease;
+    }
 
-  // 监听页面变化，确保在动态加载的内容上也能生效
-  const observer = new MutationObserver((mutations) => {
-    for (const mutation of mutations) {
-      if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-        const hasMarkdownBody = Array.from(mutation.addedNodes).some(
-          (node) =>
-            node.nodeType === 1 &&
-            (node.classList?.contains('markdown-body') ||
-              node.querySelector?.('.markdown-body'))
-        );
-        if (hasMarkdownBody) {
-          initFeaturesPanels();
-          break;
-        }
+    .platform-filter-button:hover,
+    .platform-filter-button[aria-expanded="true"] {
+      background: var(--grpf-bg-muted);
+      color: var(--grpf-fg);
+    }
+
+    .platform-filter[data-filtering="true"] .platform-filter-button {
+      color: var(--grpf-accent);
+    }
+
+    .platform-filter-button svg {
+      width: 18px;
+      height: 18px;
+      flex: none;
+    }
+
+    .platform-filter-label {
+      max-width: 0;
+      overflow: hidden;
+      opacity: 0;
+      white-space: nowrap;
+      font-size: 13px;
+      font-weight: 600;
+      transition: max-width 0.2s ease, opacity 0.2s ease;
+    }
+
+    .platform-filter:hover .platform-filter-label,
+    .platform-filter:focus-within .platform-filter-label,
+    .platform-filter .platform-filter-button[aria-expanded="true"] .platform-filter-label {
+      max-width: 80px;
+      opacity: 1;
+    }
+
+    .platform-filter-badge {
+      position: absolute;
+      top: -6px;
+      left: -6px;
+      min-width: 16px;
+      height: 16px;
+      padding: 0 4px;
+      border-radius: 999px;
+      background: var(--grpf-accent);
+      color: var(--grpf-on-accent);
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 16px;
+      text-align: center;
+      box-shadow: 0 0 0 2px var(--grpf-bg);
+    }
+
+    .platform-filter-badge[hidden] {
+      display: none;
+    }
+
+    .platform-dropdown {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 12px;
+      width: 264px;
+      padding: 8px;
+      border: 1px solid var(--grpf-border);
+      border-radius: 12px;
+      background: var(--grpf-bg);
+      box-shadow: var(--grpf-shadow);
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(-4px) scale(0.98);
+      transform-origin: top right;
+      pointer-events: none;
+      transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s;
+    }
+
+    .platform-dropdown.show {
+      opacity: 1;
+      visibility: visible;
+      transform: none;
+      pointer-events: auto;
+    }
+
+    .platform-dropdown-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 6px 8px 8px;
+    }
+
+    .platform-dropdown-title {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      color: var(--grpf-fg);
+    }
+
+    .platform-dropdown-summary {
+      font-size: 12px;
+      color: var(--grpf-fg-muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .platform-options {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .platform-option {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      margin: 0;
+      padding: 7px 8px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--grpf-fg);
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+      transition: background-color 0.12s ease;
+    }
+
+    .platform-option:hover {
+      background: var(--grpf-bg-muted);
+    }
+
+    .platform-option.selected {
+      background: var(--grpf-accent-bg);
+    }
+
+    .platform-option-icon {
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      flex: none;
+      border-radius: 8px;
+      background: var(--grpf-bg-muted);
+      color: var(--grpf-fg-muted);
+      transition: background-color 0.12s ease, color 0.12s ease;
+    }
+
+    .platform-option.selected .platform-option-icon {
+      background: var(--grpf-accent);
+      color: var(--grpf-on-accent);
+    }
+
+    .platform-option-icon svg {
+      width: 15px;
+      height: 15px;
+    }
+
+    .platform-option-name {
+      flex: 1;
+      min-width: 0;
+      font-size: 14px;
+    }
+
+    .platform-option-count {
+      font-size: 12px;
+      color: var(--grpf-fg-muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .platform-option.selected .platform-option-count {
+      color: var(--grpf-accent);
+    }
+
+    .platform-option-check {
+      display: grid;
+      place-items: center;
+      width: 16px;
+      height: 16px;
+      flex: none;
+      border: 1px solid var(--grpf-border);
+      border-radius: 4px;
+      background: var(--grpf-bg);
+      color: transparent;
+    }
+
+    .platform-option.selected .platform-option-check {
+      border-color: var(--grpf-accent);
+      background: var(--grpf-accent);
+      color: var(--grpf-on-accent);
+    }
+
+    .platform-option-check svg {
+      width: 12px;
+      height: 12px;
+    }
+
+    .platform-dropdown-footer {
+      display: flex;
+      gap: 6px;
+      margin-top: 6px;
+      padding: 8px 2px 2px;
+      border-top: 1px solid var(--grpf-border-muted);
+    }
+
+    .platform-action {
+      flex: 1;
+      margin: 0;
+      padding: 5px 8px;
+      border: 1px solid var(--grpf-border);
+      border-radius: 6px;
+      background: var(--grpf-bg);
+      color: var(--grpf-fg);
+      font: inherit;
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 20px;
+      cursor: pointer;
+      transition: background-color 0.12s ease, border-color 0.12s ease;
+    }
+
+    .platform-action:hover:not(:disabled) {
+      background: var(--grpf-bg-muted);
+      border-color: var(--grpf-fg-muted);
+    }
+
+    .platform-action:disabled {
+      color: var(--grpf-fg-muted);
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .platform-filter-button:focus-visible,
+    .platform-action:focus-visible {
+      outline: 2px solid var(--grpf-accent);
+      outline-offset: 2px;
+    }
+
+    .platform-option:focus-visible {
+      outline: 2px solid var(--grpf-accent);
+      outline-offset: -2px;
+    }
+
+    .markdown-body.my-3.grpf-collapsible,
+    .markdown-body.tmp-my-3.grpf-collapsible,
+    [data-test-selector="body-content"].markdown-body.grpf-collapsible {
+      position: relative;
+      max-height: ${COLLAPSE_LIMIT}px;
+      overflow: hidden;
+      padding-bottom: 44px;
+      transition: max-height 0.3s ease-in-out;
+    }
+
+    .markdown-body.grpf-collapsible.expanded {
+      max-height: none;
+      padding-bottom: 0;
+    }
+
+    .toggle-button {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      height: 56px;
+      width: 100%;
+      margin: 0;
+      padding: 0 0 9px;
+      border: 0;
+      background: linear-gradient(to top, var(--grpf-bg) 42%, transparent);
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .markdown-body.grpf-collapsible.expanded .toggle-button {
+      position: static;
+      height: auto;
+      padding: 10px 0 2px;
+      background: none;
+    }
+
+    .toggle-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px;
+      border: 1px solid var(--grpf-border);
+      border-radius: 999px;
+      background: var(--grpf-bg);
+      color: var(--grpf-accent);
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 18px;
+      box-shadow: var(--grpf-shadow);
+      transition: background-color 0.12s ease;
+    }
+
+    .toggle-button:hover .toggle-pill {
+      background: var(--grpf-bg-muted);
+    }
+
+    .toggle-button:focus-visible {
+      outline: 2px solid var(--grpf-accent);
+      outline-offset: -2px;
+    }
+
+    .toggle-pill svg {
+      width: 12px;
+      height: 12px;
+    }
+
+    .hidden-asset {
+      display: none !important;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .platform-filter,
+      .platform-filter *,
+      .markdown-body.grpf-collapsible,
+      .toggle-pill {
+        transition: none !important;
       }
     }
-  });
+  `;
 
-  // 获取当前系统平台
-  function getCurrentPlatform() {
-    const platform = navigator.platform.toLowerCase();
-    const userAgent = navigator.userAgent.toLowerCase();
-    if (platform.includes('win')) return 'windows';
-    if (platform.includes('mac')) return 'macos';
-    if (platform.includes('linux')) return 'linux';
-    if (userAgent.includes('android')) return 'android';
-    return 'unknown';
-  }
-
-  // 获取当前系统平台
   const currentPlatform = getCurrentPlatform();
-  // 获取保存的平台选择，如果没有保存过，则只选中当前平台
-  let selectedPlatforms = GM_getValue('selectedPlatforms', null);
-  if (selectedPlatforms === null) {
-    selectedPlatforms = [currentPlatform];
-    GM_setValue('selectedPlatforms', selectedPlatforms);
-  }
+  let selectedPlatforms = loadSelection();
 
-  // 筛选资源
-  function filterAssets(assetsContainer) {
-    if (!assetsContainer) {
-      return;
-    }
+  let panel = null;
+  let dropdown = null;
+  let filterButton = null;
+  let summaryEl = null;
+  let badgeEl = null;
+  const optionEls = new Map();
+  const countEls = new Map();
 
-    const containerAssets = assetsContainer.querySelectorAll(
-      '.Box-row.d-flex.flex-column.flex-md-row'
-    );
+  let refreshTimer = null;
+  let contentObserver = null;
+  const watchedContainers = new WeakSet();
 
-    // 重置所有资源的显示状态
-    containerAssets.forEach((asset) => {
-      asset.style.cssText = 'display: flex !important';
-      asset.classList.remove('hidden-asset');
-    });
+  function getCurrentPlatform() {
+    const userAgent = navigator.userAgent.toLowerCase();
+    if (userAgent.includes('android')) return 'android';
 
-    if (selectedPlatforms.length === 0) {
-      return;
-    }
-
-    containerAssets.forEach((asset) => {
-      const assetText = asset.textContent.toLowerCase();
-      // 检查是否是特定平台的文件
-      const platformMatches = {
-        windows: [
-          '.exe',
-          '.msi',
-          'windows',
-          'win32',
-          'win64',
-          '-win.',
-          '.win.',
-          'windows',
-        ],
-
-        macos: [
-          '.dmg',
-          '.pkg',
-          'darwin',
-          'macos',
-          'osx',
-          '-mac.',
-          '.mac.',
-          'mac-universal',
-          'mac-os',
-        ],
-
-        linux: [
-          '.deb',
-          '.rpm',
-          '.appimage',
-          'linux',
-          '-linux.',
-          '.linux.',
-          'ubuntu',
-          'debian',
-          'fedora',
-          'freebsd',
-        ],
-
-        android: ['.apk', '.aab', 'android', '-android.', '.android.'],
-      };
-
-      // 检查文件是否属于任何平台
-      const matchPlatform = (text, identifiers) => {
-        return identifiers.some((id) => text.includes(id.toLowerCase()));
-      };
-
-      const matches = Object.entries(platformMatches).reduce(
-        (acc, [platform, identifiers]) => {
-          acc[platform] = matchPlatform(assetText, identifiers);
-          return acc;
-        },
-        {}
-      );
-
-      // 检查文件是否属于任何平台
-      const isPlatformSpecific = Object.values(matches).some((match) => match);
-
-      // 检查文件是否匹配任何选中的平台
-      const matchesSelectedPlatform = selectedPlatforms.some(
-        (platform) => matches[platform]
-      );
-
-      // 检查文件是否属于未选中的平台
-      const matchesUnselectedPlatform = Object.entries(matches).some(
-        ([platform, match]) => match && !selectedPlatforms.includes(platform)
-      );
-
-      // 显示条件：
-      // 1. 如果是通用文件（不属于任何特定平台），则显示
-      // 2. 如果是特定平台文件，则必须匹配选中的平台且不能匹配未选中的平台
-      const shouldShow =
-        !isPlatformSpecific ||
-        (matchesSelectedPlatform && !matchesUnselectedPlatform);
-
-      if (!shouldShow) {
-        asset.classList.add('hidden-asset');
-        asset.style.cssText = 'display: none !important';
-      }
-    });
-
-    // 强制重新计算布局
-    assetsContainer.style.display = 'none';
-    void assetsContainer.offsetHeight;
-    assetsContainer.style.display = '';
-  }
-
-  // 初始化资源列表筛选
-  function initAssetsFilter() {
-    const assetsContainer = document.querySelector('.Box--condensed');
-    if (!assetsContainer) {
-      setTimeout(initAssetsFilter, 100);
-      return;
-    }
-
-    // 检查是否已经存在筛选器
-    if (document.querySelector('.platform-filter')) {
-      filterAssets(assetsContainer);
-      return;
-    }
-
-    // 检查是否有资源列表
-    const assetsList = assetsContainer.querySelectorAll(
-      '.Box-row.d-flex.flex-column.flex-md-row'
-    );
-    if (assetsList.length === 0) {
-      setTimeout(initAssetsFilter, 100);
-      return;
-    }
-
-    // 创建一个 MutationObserver 来监听资源列表的变化
-    const assetsObserver = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-          const hasAssets = Array.from(mutation.addedNodes).some(
-            (node) => node.nodeType === 1 && node.classList?.contains('Box-row')
-          );
-          if (hasAssets) {
-            filterAssets(assetsContainer);
-          }
-        }
-      }
-    });
-
-    // 开始观察资源列表容器
-    assetsObserver.observe(assetsContainer, {
-      childList: true,
-      subtree: true,
-    });
-
-    // 创建筛选器容器
-    const filterContainer = document.createElement('div');
-    filterContainer.className = 'platform-filter';
-
-    // 创建筛选按钮
-    const filterButton = document.createElement('button');
-    filterButton.className = 'platform-filter-button';
-    filterButton.innerHTML = `${ICONS.settings} <span>平台筛选</span>`;
-
-    // 创建下拉菜单
-    const dropdown = document.createElement('div');
-    dropdown.className = 'platform-dropdown';
-
-    // 添加平台选项
-    const platforms = [
-      { id: 'windows', name: 'Windows' },
-      { id: 'macos', name: 'macOS' },
-      { id: 'linux', name: 'Linux' },
-      { id: 'android', name: 'Android' },
-    ];
-
-    platforms.forEach((platform) => {
-      const option = document.createElement('div');
-      option.className = `platform-option ${
-        selectedPlatforms.includes(platform.id) ? 'selected' : ''
-      }`;
-      option.textContent = platform.name;
-      option.onclick = (e) => {
-        e.stopPropagation();
-        const index = selectedPlatforms.indexOf(platform.id);
-        if (index === -1) {
-          selectedPlatforms.push(platform.id);
-        } else {
-          selectedPlatforms.splice(index, 1);
-        }
-        option.classList.toggle('selected');
-
-        GM_setValue('selectedPlatforms', selectedPlatforms);
-        // 筛选所有资源容器
-        const allAssetsContainers =
-          document.querySelectorAll('.Box--condensed');
-        allAssetsContainers.forEach((container) => {
-          filterAssets(container);
-        });
-      };
-      dropdown.appendChild(option);
-    });
-
-    // 添加按钮点击事件
-    filterButton.onclick = () => {
-      dropdown.classList.toggle('show');
-    };
-
-    // 点击其他地方关闭下拉菜单
-    document.addEventListener('click', (e) => {
-      if (!filterContainer.contains(e.target)) {
-        dropdown.classList.remove('show');
-      }
-    });
-
-    // 组装并添加到页面
-    filterContainer.appendChild(filterButton);
-    filterContainer.appendChild(dropdown);
-    const mainContent = document.querySelector('main');
-    const releaseHeader = document.querySelector('.release-header');
-    if (releaseHeader) {
-      releaseHeader.style.position = 'relative';
-      releaseHeader.appendChild(filterContainer);
-    } else if (mainContent) {
-      mainContent.appendChild(filterContainer);
-    } else {
-      document.body.appendChild(filterContainer);
-    }
-
-    // 初始筛选
-    filterAssets(assetsContainer);
-  }
-
-  // 添加样式到页面
-  function addStyles() {
-    if (!document.querySelector('style[data-github-release-filter]')) {
-      const styleElement = document.createElement('style');
-      styleElement.setAttribute('data-github-release-filter', 'true');
-      styleElement.textContent = styles;
-      document.head.appendChild(styleElement);
-    }
-  }
-
-  // 检查是否在releases页面
-  function isReleasesPage() {
-    return window.location.href.toLowerCase().includes('releases');
-  }
-
-  // 等待页面加载完成后再初始化
-  function initializeFeatures() {
-    if (!isReleasesPage()) {
-      return;
-    }
-    // 确保样式已添加
-    if (!document.querySelector('style[data-github-release-filter]')) {
-      addStyles();
-    }
-
-    // 找到所有的资源容器
-    const assetsContainers = document.querySelectorAll('.Box--condensed');
-
-    // 先初始化发布说明功能
-    initFeaturesPanels();
-    startObserver();
-
-    // 对每个资源容器初始化筛选功能
-    assetsContainers.forEach((container) => {
-      // 检查容器内是否有资源
-      const hasAssets =
-        container.querySelectorAll('.Box-row.d-flex.flex-column.flex-md-row')
-          .length > 0;
-      if (hasAssets) {
-        filterAssets(container);
-      }
-    });
-
-    // 然后初始化资源列表筛选功能
-    initAssetsFilter();
-  }
-
-  // 检查并初始化功能
-  function checkAndInitialize() {
-    if (!isReleasesPage()) {
-      return;
-    }
-    // 确保样式已添加
-    addStyles();
-    // 确保页面已经完全加载
+    const platform = (
+      (navigator.userAgentData && navigator.userAgentData.platform) ||
+      navigator.platform ||
+      ''
+    ).toLowerCase();
+    if (platform.includes('win')) return 'windows';
     if (
-      document.readyState === 'complete' ||
-      document.readyState === 'interactive'
+      platform.includes('mac') ||
+      platform.includes('iphone') ||
+      platform.includes('ipad')
     ) {
-      // 先初始化发布说明功能
-      const markdownContent = document.querySelector('.markdown-body.my-3');
-      if (markdownContent) {
-        addStyles();
-        initFeaturesPanels();
-        startObserver();
-      }
+      return 'macos';
+    }
+    if (platform.includes('linux') || platform.includes('x11')) return 'linux';
+    return null;
+  }
 
-      // 检查资源列表是否存在
-      const releaseContent = document.querySelector('.Box--condensed');
-      if (releaseContent) {
-        // 确保所有动态内容都已加载
-        setTimeout(() => {
-          initAssetsFilter();
-          // 持续监听可能的动态内容加载
-          const contentObserver = new MutationObserver((mutations) => {
-            for (const mutation of mutations) {
-              if (
-                mutation.type === 'childList' &&
-                mutation.addedNodes.length > 0
-              ) {
-                const hasMarkdownBody = Array.from(mutation.addedNodes).some(
-                  (node) =>
-                    node.nodeType === 1 &&
-                    (node.classList?.contains('markdown-body') ||
-                      node.querySelector?.('.markdown-body'))
-                );
-                if (hasMarkdownBody) {
-                  initFeaturesPanels();
-                }
-                const hasAssets = Array.from(mutation.addedNodes).some(
-                  (node) =>
-                    node.nodeType === 1 && node.classList?.contains('Box-row')
-                );
-                if (hasAssets) {
-                  initAssetsFilter();
-                }
-              }
-            }
-          });
-          contentObserver.observe(releaseContent, {
-            childList: true,
-            subtree: true,
-          });
-        }, 500);
-      } else {
-        setTimeout(checkAndInitialize, 100);
-      }
+  function loadSelection() {
+    const stored = GM_getValue(STORAGE_KEY, null);
+    if (!Array.isArray(stored)) {
+      const initial = currentPlatform ? [currentPlatform] : [];
+      GM_setValue(STORAGE_KEY, initial);
+      return initial;
+    }
+    return PLATFORM_IDS.filter((id) => stored.includes(id));
+  }
+
+  function getPlatformMatches(text) {
+    const matches = {};
+    PLATFORMS.forEach((platform) => {
+      matches[platform.id] = platform.pattern.test(text);
+    });
+    return matches;
+  }
+
+  function getAssets() {
+    return Array.from(document.querySelectorAll(ASSET_ROW_SELECTOR)).filter(
+      (row) => !row.querySelector('.js-release-asset-untruncate-btn')
+    );
+  }
+
+  function getAssetName(asset) {
+    const nameEl = asset.querySelector(
+      '.text-bold, .asset-name, a[href*="/releases/download/"]'
+    );
+    return (nameEl || asset).textContent || '';
+  }
+
+  function shouldShowAsset(asset) {
+    if (selectedPlatforms.length === 0) return true;
+    const matches = getPlatformMatches(getAssetName(asset));
+    const isPlatformSpecific = PLATFORM_IDS.some((id) => matches[id]);
+    if (!isPlatformSpecific) return true;
+    return selectedPlatforms.some((id) => matches[id]);
+  }
+
+  function getStats() {
+    const counts = {};
+    PLATFORM_IDS.forEach((id) => {
+      counts[id] = 0;
+    });
+
+    let visible = 0;
+    const assets = getAssets();
+    assets.forEach((asset) => {
+      const matches = getPlatformMatches(getAssetName(asset));
+      PLATFORM_IDS.forEach((id) => {
+        if (matches[id]) counts[id] += 1;
+      });
+      if (shouldShowAsset(asset)) visible += 1;
+    });
+
+    return { total: assets.length, visible, counts };
+  }
+
+  function applyFilters() {
+    getAssets().forEach((asset) => {
+      asset.classList.toggle('hidden-asset', !shouldShowAsset(asset));
+    });
+    syncPanel();
+  }
+
+  function setSelectedPlatforms(next) {
+    selectedPlatforms = PLATFORM_IDS.filter((id) => next.includes(id));
+    GM_setValue(STORAGE_KEY, selectedPlatforms);
+    applyFilters();
+  }
+
+  function togglePlatform(id) {
+    const next = selectedPlatforms.includes(id)
+      ? selectedPlatforms.filter((item) => item !== id)
+      : selectedPlatforms.concat(id);
+    setSelectedPlatforms(next);
+  }
+
+  function syncPanel() {
+    if (!panel) return;
+
+    const { total, visible, counts } = getStats();
+    const filtering = selectedPlatforms.length > 0;
+
+    panel.dataset.filtering = String(filtering);
+    badgeEl.textContent = String(selectedPlatforms.length);
+    badgeEl.hidden = !filtering;
+
+    const pending = !total && getPendingAssetsFragment();
+    const truncated = Boolean(
+      document.querySelector('.js-release-asset-untruncate-btn')
+    );
+    if (pending) {
+      summaryEl.textContent = '资源加载中…';
+      summaryEl.title = '';
+    } else if (truncated) {
+      summaryEl.textContent = filtering
+        ? `显示 ${visible} / ${total} · 已加载`
+        : `已加载 ${total} 个资源`;
+      summaryEl.title = '部分资源尚未加载，可在资源列表中点击 Show all';
     } else {
-      window.addEventListener('load', checkAndInitialize);
+      summaryEl.textContent = filtering
+        ? `显示 ${visible} / ${total} 个资源`
+        : `共 ${total} 个资源`;
+      summaryEl.title = '';
+    }
+
+    PLATFORMS.forEach((platform) => {
+      const option = optionEls.get(platform.id);
+      const countEl = countEls.get(platform.id);
+      if (!option || !countEl) return;
+      const active = selectedPlatforms.includes(platform.id);
+      option.classList.toggle('selected', active);
+      option.setAttribute('aria-checked', String(active));
+      countEl.textContent = String(counts[platform.id]);
+    });
+  }
+
+  function openDropdown() {
+    if (!dropdown) return;
+    dropdown.classList.add('show');
+    filterButton.setAttribute('aria-expanded', 'true');
+    syncPanel();
+  }
+
+  function closeDropdown(restoreFocus) {
+    if (!dropdown || !dropdown.classList.contains('show')) return;
+    dropdown.classList.remove('show');
+    filterButton.setAttribute('aria-expanded', 'false');
+    if (restoreFocus) filterButton.focus();
+  }
+
+  function toggleDropdown() {
+    if (dropdown.classList.contains('show')) {
+      closeDropdown();
+    } else {
+      openDropdown();
     }
   }
 
-  // 初始检查
-  checkAndInitialize();
+  function buildPanel() {
+    panel = document.createElement('div');
+    panel.className = 'platform-filter';
+    panel.dataset.filtering = 'false';
 
-  // 监听Turbo Drive页面切换事件
-  document.addEventListener('turbo:load', () => {
-    checkAndInitialize();
-  });
+    filterButton = document.createElement('button');
+    filterButton.type = 'button';
+    filterButton.className = 'platform-filter-button';
+    filterButton.setAttribute('aria-label', '平台筛选');
+    filterButton.setAttribute('aria-haspopup', 'dialog');
+    filterButton.setAttribute('aria-expanded', 'false');
+    filterButton.setAttribute('aria-controls', 'grpf-dropdown');
+    filterButton.innerHTML = `${ICONS.filter}<span class="platform-filter-label">平台筛选</span><span class="platform-filter-badge" hidden></span>`;
+    filterButton.addEventListener('click', (event) => {
+      event.stopPropagation();
+      toggleDropdown();
+    });
 
-  // 监听导航事件
-  window.addEventListener('popstate', () => {
-    checkAndInitialize();
-  });
+    badgeEl = filterButton.querySelector('.platform-filter-badge');
 
-  function startObserver() {
-    observer.observe(document.body, {
+    dropdown = document.createElement('div');
+    dropdown.id = 'grpf-dropdown';
+    dropdown.className = 'platform-dropdown';
+    dropdown.setAttribute('role', 'dialog');
+    dropdown.setAttribute('aria-label', '平台筛选');
+    dropdown.innerHTML = `
+      <div class="platform-dropdown-head">
+        <span class="platform-dropdown-title">平台筛选</span>
+        <span class="platform-dropdown-summary"></span>
+      </div>
+      <div class="platform-options" role="group" aria-label="平台"></div>
+      <div class="platform-dropdown-footer">
+        <button type="button" class="platform-action" data-action="current"></button>
+        <button type="button" class="platform-action" data-action="all">显示全部</button>
+      </div>
+    `;
+    dropdown.addEventListener('click', (event) => event.stopPropagation());
+
+    summaryEl = dropdown.querySelector('.platform-dropdown-summary');
+    const optionsEl = dropdown.querySelector('.platform-options');
+
+    PLATFORMS.forEach((platform) => {
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.className = 'platform-option';
+      option.dataset.platform = platform.id;
+      option.setAttribute('role', 'menuitemcheckbox');
+      option.setAttribute('aria-checked', 'false');
+      option.innerHTML = `
+        <span class="platform-option-icon">${platform.icon}</span>
+        <span class="platform-option-name">${platform.name}</span>
+        <span class="platform-option-count">0</span>
+        <span class="platform-option-check">${ICONS.check}</span>
+      `;
+      option.addEventListener('click', (event) => {
+        event.stopPropagation();
+        togglePlatform(platform.id);
+      });
+      optionsEl.appendChild(option);
+      optionEls.set(platform.id, option);
+      countEls.set(platform.id, option.querySelector('.platform-option-count'));
+    });
+
+    const currentAction = dropdown.querySelector('[data-action="current"]');
+    const currentName = currentPlatform
+      ? (PLATFORMS.find((platform) => platform.id === currentPlatform) || {})
+          .name
+      : null;
+    currentAction.textContent = currentName ? `仅 ${currentName}` : '当前平台';
+    currentAction.disabled = !currentName;
+    currentAction.addEventListener('click', () => {
+      setSelectedPlatforms(currentPlatform ? [currentPlatform] : []);
+    });
+
+    dropdown
+      .querySelector('[data-action="all"]')
+      .addEventListener('click', () => {
+        setSelectedPlatforms([]);
+      });
+
+    panel.appendChild(filterButton);
+    panel.appendChild(dropdown);
+    document.body.appendChild(panel);
+
+    syncPanel();
+  }
+
+  function getPendingAssetsFragment() {
+    return document.querySelector(
+      'include-fragment[src*="expanded_assets"], include-fragment[data-deferred-src*="expanded_assets"]'
+    );
+  }
+
+  function hasAssetArea() {
+    return Boolean(
+      document.querySelector('.Box--condensed .Box-row') ||
+        getPendingAssetsFragment()
+    );
+  }
+
+  function clearPanelRefs() {
+    panel = null;
+    dropdown = null;
+    filterButton = null;
+    summaryEl = null;
+    badgeEl = null;
+    optionEls.clear();
+    countEls.clear();
+  }
+
+  function ensurePanel() {
+    if (panel && !panel.isConnected) {
+      clearPanelRefs();
+    }
+    if (!panel && hasAssetArea()) {
+      buildPanel();
+    }
+  }
+
+  function teardownPanel() {
+    if (panel) panel.remove();
+    clearPanelRefs();
+  }
+
+  function renderTogglePill(expanded) {
+    const label = expanded ? '收起' : '展开更多';
+    const icon = expanded ? ICONS.chevronUp : ICONS.chevronDown;
+    return `<span class="toggle-pill">${label}${icon}</span>`;
+  }
+
+  function createToggleButton(body) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'toggle-button';
+    button.setAttribute('aria-expanded', 'false');
+    button.innerHTML = renderTogglePill(false);
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      const expanded = body.classList.toggle('expanded');
+      button.setAttribute('aria-expanded', String(expanded));
+      button.innerHTML = renderTogglePill(expanded);
+      if (expanded) {
+        const top = body.getBoundingClientRect().top + window.scrollY - 80;
+        const reduceMotion = window.matchMedia(
+          '(prefers-reduced-motion: reduce)'
+        ).matches;
+        window.scrollTo({
+          top: Math.max(top, 0),
+          behavior: reduceMotion ? 'auto' : 'smooth',
+        });
+      }
+    });
+    return button;
+  }
+
+  function enhanceReleaseNotes() {
+    document.querySelectorAll(RELEASE_BODY_SELECTOR).forEach((body) => {
+      if (body.classList.contains('grpf-collapsible')) {
+        if (!body.querySelector('.toggle-button')) {
+          body.classList.remove('expanded');
+          body.appendChild(createToggleButton(body));
+        }
+        return;
+      }
+      if (body.scrollHeight <= COLLAPSE_LIMIT) return;
+      body.classList.add('grpf-collapsible');
+      body.appendChild(createToggleButton(body));
+    });
+  }
+
+  function ensureAssetObservers() {
+    document.querySelectorAll('.Box--condensed').forEach((container) => {
+      if (watchedContainers.has(container)) return;
+      if (!container.querySelector(ASSET_ROW_SELECTOR)) return;
+      watchedContainers.add(container);
+      const observer = new MutationObserver(scheduleRefresh);
+      observer.observe(container, { childList: true, subtree: true });
+    });
+  }
+
+  function scheduleRefresh() {
+    if (refreshTimer) return;
+    refreshTimer = window.setTimeout(() => {
+      refreshTimer = null;
+      refresh();
+    }, 150);
+  }
+
+  function refresh() {
+    if (!isReleasesPage()) {
+      teardownPanel();
+      return;
+    }
+    ensureAssetObservers();
+    enhanceReleaseNotes();
+    ensurePanel();
+    applyFilters();
+  }
+
+  function isReleasesPage() {
+    return /\/releases(?:\/|$)/.test(window.location.pathname);
+  }
+
+  function addStyles() {
+    if (document.querySelector('style[data-github-release-filter]')) return;
+    const styleElement = document.createElement('style');
+    styleElement.setAttribute('data-github-release-filter', 'true');
+    styleElement.textContent = STYLES;
+    document.head.appendChild(styleElement);
+  }
+
+  function startContentObserver() {
+    if (!document.body) return;
+    if (contentObserver) contentObserver.disconnect();
+    contentObserver = new MutationObserver((mutations) => {
+      const changedOutsidePanel = mutations.some((mutation) => {
+        const node =
+          mutation.target.nodeType === 1
+            ? mutation.target
+            : mutation.target.parentElement;
+        return !(node && node.closest && node.closest('.platform-filter'));
+      });
+      if (changedOutsidePanel) scheduleRefresh();
+    });
+    contentObserver.observe(document.body, {
       childList: true,
       subtree: true,
     });
   }
+
+  function handleGlobalClick(event) {
+    if (!dropdown || !dropdown.classList.contains('show')) return;
+    if (panel && panel.contains(event.target)) return;
+    closeDropdown();
+  }
+
+  function handleGlobalKeydown(event) {
+    if (event.key === 'Escape') closeDropdown(true);
+  }
+
+  function bootstrap() {
+    if (!isReleasesPage()) {
+      teardownPanel();
+      return;
+    }
+    if (!document.body || !document.head) {
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bootstrap, {
+          once: true,
+        });
+      }
+      return;
+    }
+    addStyles();
+    startContentObserver();
+    refresh();
+  }
+
+  document.addEventListener('click', handleGlobalClick);
+  document.addEventListener('keydown', handleGlobalKeydown);
+  document.addEventListener('turbo:load', bootstrap);
+  window.addEventListener('popstate', bootstrap);
+
+  bootstrap();
 })();
