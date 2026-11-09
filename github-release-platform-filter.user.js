@@ -93,7 +93,7 @@
         id: 'x86',
         name: 'x86',
         pattern:
-          /(?:^|[-_.\s])(?:x86(?![-_.]?64)|i[3-6]86|ia32)(?=$|[-_.\s])/i,
+          /(?:^|[-_.\s])(?:x86(?![-_.]?64)|x32|i[3-6]86|ia32)(?=$|[-_.\s])/i,
       },
     ],
     macos: [
@@ -129,7 +129,7 @@
         id: 'x86',
         name: 'x86',
         pattern:
-          /(?:^|[-_.\s])(?:x86(?![-_.]?64)|i[3-6]86|386)(?=$|[-_.\s])/i,
+          /(?:^|[-_.\s])(?:x86(?![-_.]?64)|x32|i[3-6]86|386)(?=$|[-_.\s])/i,
       },
       {
         id: 'arm',
@@ -175,7 +175,7 @@
         id: 'x86',
         name: 'x86',
         pattern:
-          /(?:^|[-_.\s])(?:x86(?![-_.]?64)|i[3-6]86|386)(?=$|[-_.\s])/i,
+          /(?:^|[-_.\s])(?:x86(?![-_.]?64)|x32|i[3-6]86|386)(?=$|[-_.\s])/i,
       },
       {
         id: 'universal',
@@ -207,6 +207,8 @@
     },
   ];
   const PACKAGE_TYPE_IDS = PACKAGE_TYPES.map((type) => type.id);
+  const PACKAGE_SIDECAR_PATTERN =
+    /\.(?:asc|sig|zsync|sha\d+|sha\d+sum|md5|md5sum)$/i;
 
   const STYLES = `
     :root {
@@ -863,7 +865,9 @@
   }
 
   function getPackageTypeMatches(name) {
-    return PACKAGE_TYPES.filter((type) => type.pattern.test(name)).map(
+    const trimmed = name.trim();
+    if (PACKAGE_SIDECAR_PATTERN.test(trimmed)) return [];
+    return PACKAGE_TYPES.filter((type) => type.pattern.test(trimmed)).map(
       (type) => type.id
     );
   }
@@ -1010,12 +1014,20 @@
         if (matchedPlatforms.length) {
           matchedPlatforms.forEach((id) => {
             counts[id] += 1;
-            getArchitectureMatches(id, name).forEach((archId) => {
+            const assetArchs = getArchitectureMatches(id, name);
+            assetArchs.forEach((archId) => {
               archCounts[id][archId] = (archCounts[id][archId] || 0) + 1;
             });
-            getPackageTypeMatches(name).forEach((typeId) => {
-              typeCounts[id][typeId] = (typeCounts[id][typeId] || 0) + 1;
-            });
+            const selectedArchs = getSelectedArchitectures(id);
+            const archAllowed =
+              !selectedArchs.length ||
+              !assetArchs.length ||
+              assetArchs.some((archId) => selectedArchs.includes(archId));
+            if (archAllowed) {
+              getPackageTypeMatches(name).forEach((typeId) => {
+                typeCounts[id][typeId] = (typeCounts[id][typeId] || 0) + 1;
+              });
+            }
           });
         } else {
           counts.other += 1;
