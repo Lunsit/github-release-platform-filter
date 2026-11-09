@@ -2,9 +2,9 @@
 // @name         GitHub发布平台筛选器
 // @name:en      GitHub Release Platform Filter
 // @namespace    https://github.com/eecopilot
-// @version      0.5.0
-// @description  按平台与架构筛选GitHub发布资源，优化发布说明显示，适配明暗主题
-// @description:en  Filter GitHub release assets by platform and architecture, collapse long release notes, with light/dark theme support
+// @version      0.4.1
+// @description  按平台、架构与类别筛选GitHub发布资源，优化发布说明显示，适配明暗主题
+// @description:en  Filter GitHub release assets by platform, architecture and category, collapse long release notes, with light/dark theme support
 // @author       EEP
 // @contributor  Lunsit
 // @match        https://github.com/*
@@ -23,6 +23,8 @@
 
   const STORAGE_KEY = 'selectedPlatforms';
   const ARCH_STORAGE_KEY = 'selectedArchitectures';
+  const FILTER_SCHEMA_KEY = 'filterSchemaVersion';
+  const FILTER_SCHEMA_VERSION = 1;
   const COLLAPSE_LIMIT = 300;
   const ASSET_ROW_SELECTOR =
     '.Box--condensed .Box-row.d-flex.flex-column.flex-md-row';
@@ -38,6 +40,8 @@
     check: `<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0L3.22 8.28a.75.75 0 0 1 1.06-1.06l2.72 2.72 5.72-5.72a.75.75 0 0 1 1.06 0Z"/></svg>`,
     chevronDown: `<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M12.78 5.22a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L3.22 6.28a.75.75 0 0 1 1.06-1.06L8 8.94l3.72-3.72a.75.75 0 0 1 1.06 0Z"/></svg>`,
     chevronUp: `<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3.22 10.78a.75.75 0 0 1 0-1.06l4.25-4.25a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1-1.06 1.06L8 7.06l-3.72 3.72a.75.75 0 0 1-1.06 0Z"/></svg>`,
+    ellipsis: `<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="13" cy="8" r="1.5"/></svg>`,
+    code: `<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="m11.28 3.22 4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L13.94 8 10.22 4.28a.75.75 0 0 1 1.06-1.06Zm-5.5 0a.75.75 0 0 1 0 1.06L2.06 8l3.72 3.72a.751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042-.018L.47 8.53a.75.75 0 0 1 0-1.06l4.25-4.25a.75.75 0 0 1 1.06 0Z"/></svg>`,
   };
 
   const PLATFORMS = [
@@ -178,6 +182,13 @@
       },
     ],
   };
+
+  const EXTRA_CATEGORIES = [
+    { id: 'other', name: '其他', icon: ICONS.ellipsis },
+    { id: 'source', name: '源码', icon: ICONS.code },
+  ];
+  const CATEGORIES = PLATFORMS.concat(EXTRA_CATEGORIES);
+  const CATEGORY_IDS = CATEGORIES.map((category) => category.id);
 
   const STYLES = `
     :root {
@@ -600,24 +611,22 @@
       background: none;
     }
 
-    .toggle-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 3px 10px;
+    .toggle-icon {
+      display: grid;
+      place-items: center;
+      width: 26px;
+      height: 26px;
       border: 1px solid var(--grpf-border);
-      border-radius: 999px;
+      border-radius: 50%;
       background: var(--grpf-bg);
-      color: var(--grpf-accent);
-      font-size: 12px;
-      font-weight: 600;
-      line-height: 18px;
+      color: var(--grpf-fg-muted);
       box-shadow: var(--grpf-shadow);
-      transition: background-color 0.12s ease;
+      transition: background-color 0.12s ease, color 0.12s ease;
     }
 
-    .toggle-button:hover .toggle-pill {
+    .toggle-button:hover .toggle-icon {
       background: var(--grpf-bg-muted);
+      color: var(--grpf-accent);
     }
 
     .toggle-button:focus-visible {
@@ -625,9 +634,15 @@
       outline-offset: -2px;
     }
 
-    .toggle-pill svg {
-      width: 12px;
-      height: 12px;
+    .toggle-icon svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    .platform-divider {
+      height: 1px;
+      margin: 5px 2px;
+      background: var(--grpf-border-muted);
     }
 
     .hidden-asset {
@@ -640,14 +655,14 @@
       .platform-arches,
       .platform-arches-inner,
       .markdown-body.grpf-collapsible,
-      .toggle-pill {
+      .toggle-icon {
         transition: none !important;
       }
     }
   `;
 
   const currentPlatform = getCurrentPlatform();
-  let selectedPlatforms = loadSelection();
+  let selectedCategories = loadSelection();
   let selectedArchitectures = loadArchitectureSelection();
 
   let panel = null;
@@ -688,9 +703,17 @@
   function loadSelection() {
     const stored = GM_getValue(STORAGE_KEY, null);
     if (!Array.isArray(stored)) {
-      return currentPlatform ? [currentPlatform] : [];
+      return currentPlatform ? [currentPlatform, 'other', 'source'] : [];
     }
-    return PLATFORM_IDS.filter((id) => stored.includes(id));
+    const schema = GM_getValue(FILTER_SCHEMA_KEY, 0);
+    let next = CATEGORY_IDS.filter((id) => stored.includes(id));
+    if (schema < FILTER_SCHEMA_VERSION && next.length) {
+      const migrated = next.concat(
+        ['other', 'source'].filter((id) => !next.includes(id))
+      );
+      next = CATEGORY_IDS.filter((id) => migrated.includes(id));
+    }
+    return next;
   }
 
   function loadArchitectureSelection() {
@@ -700,7 +723,7 @@
     }
     const result = {};
     PLATFORM_IDS.forEach((platformId) => {
-      if (!selectedPlatforms.includes(platformId)) return;
+      if (!selectedCategories.includes(platformId)) return;
       const raw = stored[platformId];
       if (!Array.isArray(raw)) return;
       const valid = ARCHITECTURES[platformId]
@@ -743,14 +766,24 @@
     return (nameEl || asset).textContent || '';
   }
 
+  function isSourceCodeAsset(asset) {
+    if (asset.querySelector('a[href*="/archive/"]')) return true;
+    return /^source code\b/i.test(getAssetName(asset).trim());
+  }
+
   function shouldShowAsset(asset) {
-    if (selectedPlatforms.length === 0) return true;
+    if (selectedCategories.length === 0) return true;
+    if (isSourceCodeAsset(asset)) {
+      return selectedCategories.includes('source');
+    }
     const name = getAssetName(asset);
     const matches = getPlatformMatches(name);
-    const isPlatformSpecific = PLATFORM_IDS.some((id) => matches[id]);
-    if (!isPlatformSpecific) return true;
-    return selectedPlatforms.some((platformId) => {
-      if (!matches[platformId]) return false;
+    const matchedPlatforms = PLATFORM_IDS.filter((id) => matches[id]);
+    if (!matchedPlatforms.length) {
+      return selectedCategories.includes('other');
+    }
+    return matchedPlatforms.some((platformId) => {
+      if (!selectedCategories.includes(platformId)) return false;
       const selectedArchs = getSelectedArchitectures(platformId);
       if (!selectedArchs.length) return true;
       const assetArchs = getArchitectureMatches(platformId, name);
@@ -762,23 +795,33 @@
   function getStats() {
     const counts = {};
     const archCounts = {};
-    PLATFORM_IDS.forEach((id) => {
+    CATEGORY_IDS.forEach((id) => {
       counts[id] = 0;
+    });
+    PLATFORM_IDS.forEach((id) => {
       archCounts[id] = {};
     });
 
     let visible = 0;
     const assets = getAssets();
     assets.forEach((asset) => {
-      const name = getAssetName(asset);
-      const matches = getPlatformMatches(name);
-      PLATFORM_IDS.forEach((id) => {
-        if (!matches[id]) return;
-        counts[id] += 1;
-        getArchitectureMatches(id, name).forEach((archId) => {
-          archCounts[id][archId] = (archCounts[id][archId] || 0) + 1;
-        });
-      });
+      if (isSourceCodeAsset(asset)) {
+        counts.source += 1;
+      } else {
+        const name = getAssetName(asset);
+        const matches = getPlatformMatches(name);
+        const matchedPlatforms = PLATFORM_IDS.filter((id) => matches[id]);
+        if (matchedPlatforms.length) {
+          matchedPlatforms.forEach((id) => {
+            counts[id] += 1;
+            getArchitectureMatches(id, name).forEach((archId) => {
+              archCounts[id][archId] = (archCounts[id][archId] || 0) + 1;
+            });
+          });
+        } else {
+          counts.other += 1;
+        }
+      }
       if (shouldShowAsset(asset)) visible += 1;
     });
 
@@ -792,10 +835,10 @@
     syncPanel();
   }
 
-  function setSelectedPlatforms(next) {
-    selectedPlatforms = PLATFORM_IDS.filter((id) => next.includes(id));
+  function setSelectedCategories(next) {
+    selectedCategories = CATEGORY_IDS.filter((id) => next.includes(id));
     const prunedArchs = {};
-    selectedPlatforms.forEach((platformId) => {
+    selectedCategories.forEach((platformId) => {
       if (selectedArchitectures[platformId]) {
         prunedArchs[platformId] = selectedArchitectures[platformId];
       }
@@ -804,15 +847,15 @@
     applyFilters();
   }
 
-  function togglePlatform(id) {
-    const next = selectedPlatforms.includes(id)
-      ? selectedPlatforms.filter((item) => item !== id)
-      : selectedPlatforms.concat(id);
-    setSelectedPlatforms(next);
+  function toggleCategory(id) {
+    const next = selectedCategories.includes(id)
+      ? selectedCategories.filter((item) => item !== id)
+      : selectedCategories.concat(id);
+    setSelectedCategories(next);
   }
 
   function toggleArchitecture(platformId, archId) {
-    if (!selectedPlatforms.includes(platformId)) return;
+    if (!selectedCategories.includes(platformId)) return;
     const current = getSelectedArchitectures(platformId);
     const next = current.includes(archId)
       ? current.filter((id) => id !== archId)
@@ -838,8 +881,9 @@
   let saveFeedbackTimer = null;
 
   function savePreference() {
-    GM_setValue(STORAGE_KEY, selectedPlatforms);
+    GM_setValue(STORAGE_KEY, selectedCategories);
     GM_setValue(ARCH_STORAGE_KEY, selectedArchitectures);
+    GM_setValue(FILTER_SCHEMA_KEY, FILTER_SCHEMA_VERSION);
     if (!saveButtonEl) return;
     saveButtonEl.textContent = '已保存';
     saveButtonEl.classList.add('saved');
@@ -865,10 +909,10 @@
     if (!panel) return;
 
     const { total, visible, counts, archCounts } = getStats();
-    const filtering = selectedPlatforms.length > 0;
+    const filtering = selectedCategories.length > 0;
 
     panel.dataset.filtering = String(filtering);
-    badgeEl.textContent = String(selectedPlatforms.length);
+    badgeEl.textContent = String(selectedCategories.length);
     badgeEl.hidden = !filtering;
 
     const pending = !total && getPendingAssetsFragment();
@@ -894,7 +938,7 @@
       const option = optionEls.get(platform.id);
       const countEl = countEls.get(platform.id);
       if (!option || !countEl) return;
-      const active = selectedPlatforms.includes(platform.id);
+      const active = selectedCategories.includes(platform.id);
       option.classList.toggle('selected', active);
       option.setAttribute('aria-checked', String(active));
       countEl.textContent = String(counts[platform.id]);
@@ -923,6 +967,16 @@
       archData.allChip.classList.toggle('selected', allSelected);
       archData.allChip.setAttribute('aria-pressed', String(allSelected));
       archData.archesEl.hidden = !hasArchOptions;
+    });
+
+    EXTRA_CATEGORIES.forEach((category) => {
+      const option = optionEls.get(category.id);
+      const countEl = countEls.get(category.id);
+      if (!option || !countEl) return;
+      const active = selectedCategories.includes(category.id);
+      option.classList.toggle('selected', active);
+      option.setAttribute('aria-checked', String(active));
+      countEl.textContent = String(counts[category.id]);
     });
   }
 
@@ -956,11 +1010,11 @@
     filterButton = document.createElement('button');
     filterButton.type = 'button';
     filterButton.className = 'platform-filter-button';
-    filterButton.setAttribute('aria-label', '平台筛选');
+    filterButton.setAttribute('aria-label', '筛选');
     filterButton.setAttribute('aria-haspopup', 'dialog');
     filterButton.setAttribute('aria-expanded', 'false');
     filterButton.setAttribute('aria-controls', 'grpf-dropdown');
-    filterButton.innerHTML = `${ICONS.filter}<span class="platform-filter-label">平台筛选</span><span class="platform-filter-badge" hidden></span>`;
+    filterButton.innerHTML = `${ICONS.filter}<span class="platform-filter-label">筛选</span><span class="platform-filter-badge" hidden></span>`;
     filterButton.addEventListener('click', (event) => {
       event.stopPropagation();
       toggleDropdown();
@@ -972,13 +1026,13 @@
     dropdown.id = 'grpf-dropdown';
     dropdown.className = 'platform-dropdown';
     dropdown.setAttribute('role', 'dialog');
-    dropdown.setAttribute('aria-label', '平台筛选');
+    dropdown.setAttribute('aria-label', '筛选');
     dropdown.innerHTML = `
       <div class="platform-dropdown-head">
-        <span class="platform-dropdown-title">平台筛选</span>
+        <span class="platform-dropdown-title">筛选</span>
         <span class="platform-dropdown-summary"></span>
       </div>
-      <div class="platform-options" role="group" aria-label="平台"></div>
+      <div class="platform-options" role="group" aria-label="筛选类别"></div>
       <div class="platform-dropdown-footer">
         <button type="button" class="platform-action" data-action="save">保存为偏好</button>
         <button type="button" class="platform-action" data-action="all">显示全部</button>
@@ -989,77 +1043,85 @@
     summaryEl = dropdown.querySelector('.platform-dropdown-summary');
     const optionsEl = dropdown.querySelector('.platform-options');
 
-    PLATFORMS.forEach((platform) => {
+    CATEGORIES.forEach((category) => {
+      if (category.id === 'other') {
+        const divider = document.createElement('div');
+        divider.className = 'platform-divider';
+        optionsEl.appendChild(divider);
+      }
+
       const entry = document.createElement('div');
       entry.className = 'platform-entry';
-      entry.dataset.platform = platform.id;
+      entry.dataset.platform = category.id;
 
       const option = document.createElement('button');
       option.type = 'button';
       option.className = 'platform-option';
-      option.dataset.platform = platform.id;
+      option.dataset.platform = category.id;
       option.setAttribute('role', 'menuitemcheckbox');
       option.setAttribute('aria-checked', 'false');
       option.innerHTML = `
-        <span class="platform-option-icon">${platform.icon}</span>
-        <span class="platform-option-name">${platform.name}</span>
+        <span class="platform-option-icon">${category.icon}</span>
+        <span class="platform-option-name">${category.name}</span>
         <span class="platform-option-count">0</span>
         <span class="platform-option-check">${ICONS.check}</span>
       `;
       option.addEventListener('click', (event) => {
         event.stopPropagation();
-        togglePlatform(platform.id);
+        toggleCategory(category.id);
       });
       entry.appendChild(option);
 
-      const archesEl = document.createElement('div');
-      archesEl.className = 'platform-arches';
-      archesEl.hidden = true;
-      const archesInner = document.createElement('div');
-      archesInner.className = 'platform-arches-inner';
-      archesInner.setAttribute('role', 'group');
-      archesInner.setAttribute('aria-label', `${platform.name} 架构`);
+      if (ARCHITECTURES[category.id]) {
+        const archesEl = document.createElement('div');
+        archesEl.className = 'platform-arches';
+        archesEl.hidden = true;
+        const archesInner = document.createElement('div');
+        archesInner.className = 'platform-arches-inner';
+        archesInner.setAttribute('role', 'group');
+        archesInner.setAttribute('aria-label', `${category.name} 架构`);
 
-      const allChip = document.createElement('button');
-      allChip.type = 'button';
-      allChip.className = 'arch-chip';
-      allChip.dataset.arch = 'all';
-      allChip.textContent = '全部';
-      allChip.title = '清除该平台的架构筛选';
-      allChip.setAttribute('aria-pressed', 'true');
-      allChip.addEventListener('click', (event) => {
-        event.stopPropagation();
-        clearArchitectures(platform.id);
-      });
-      archesInner.appendChild(allChip);
-
-      const chips = new Map();
-      ARCHITECTURES[platform.id].forEach((definition) => {
-        const chip = document.createElement('button');
-        chip.type = 'button';
-        chip.className = 'arch-chip';
-        chip.dataset.arch = definition.id;
-        chip.setAttribute('aria-pressed', 'false');
-        chip.appendChild(document.createTextNode(definition.name));
-        const chipCountEl = document.createElement('span');
-        chipCountEl.className = 'arch-chip-count';
-        chipCountEl.textContent = '0';
-        chip.appendChild(chipCountEl);
-        chip.addEventListener('click', (event) => {
+        const allChip = document.createElement('button');
+        allChip.type = 'button';
+        allChip.className = 'arch-chip';
+        allChip.dataset.arch = 'all';
+        allChip.textContent = '全部';
+        allChip.title = '清除该平台的架构筛选';
+        allChip.setAttribute('aria-pressed', 'true');
+        allChip.addEventListener('click', (event) => {
           event.stopPropagation();
-          toggleArchitecture(platform.id, definition.id);
+          clearArchitectures(category.id);
         });
-        archesInner.appendChild(chip);
-        chips.set(definition.id, { button: chip, countEl: chipCountEl });
-      });
+        archesInner.appendChild(allChip);
 
-      archesEl.appendChild(archesInner);
-      entry.appendChild(archesEl);
+        const chips = new Map();
+        ARCHITECTURES[category.id].forEach((definition) => {
+          const chip = document.createElement('button');
+          chip.type = 'button';
+          chip.className = 'arch-chip';
+          chip.dataset.arch = definition.id;
+          chip.setAttribute('aria-pressed', 'false');
+          chip.appendChild(document.createTextNode(definition.name));
+          const chipCountEl = document.createElement('span');
+          chipCountEl.className = 'arch-chip-count';
+          chipCountEl.textContent = '0';
+          chip.appendChild(chipCountEl);
+          chip.addEventListener('click', (event) => {
+            event.stopPropagation();
+            toggleArchitecture(category.id, definition.id);
+          });
+          archesInner.appendChild(chip);
+          chips.set(definition.id, { button: chip, countEl: chipCountEl });
+        });
+
+        archesEl.appendChild(archesInner);
+        entry.appendChild(archesEl);
+        archEls.set(category.id, { entry, archesEl, allChip, chips });
+      }
+
       optionsEl.appendChild(entry);
-
-      optionEls.set(platform.id, option);
-      countEls.set(platform.id, option.querySelector('.platform-option-count'));
-      archEls.set(platform.id, { entry, archesEl, allChip, chips });
+      optionEls.set(category.id, option);
+      countEls.set(category.id, option.querySelector('.platform-option-count'));
     });
 
     saveButtonEl = dropdown.querySelector('[data-action="save"]');
@@ -1069,7 +1131,7 @@
     dropdown
       .querySelector('[data-action="all"]')
       .addEventListener('click', () => {
-        setSelectedPlatforms([]);
+        setSelectedCategories([]);
       });
 
     panel.appendChild(filterButton);
@@ -1122,10 +1184,9 @@
     clearPanelRefs();
   }
 
-  function renderTogglePill(expanded) {
-    const label = expanded ? '收起' : '展开更多';
+  function renderToggleIcon(expanded) {
     const icon = expanded ? ICONS.chevronUp : ICONS.chevronDown;
-    return `<span class="toggle-pill">${label}${icon}</span>`;
+    return `<span class="toggle-icon">${icon}</span>`;
   }
 
   function createToggleButton(body) {
@@ -1133,12 +1194,14 @@
     button.type = 'button';
     button.className = 'toggle-button';
     button.setAttribute('aria-expanded', 'false');
-    button.innerHTML = renderTogglePill(false);
+    button.setAttribute('aria-label', '展开');
+    button.innerHTML = renderToggleIcon(false);
     button.addEventListener('click', (event) => {
       event.preventDefault();
       const expanded = body.classList.toggle('expanded');
       button.setAttribute('aria-expanded', String(expanded));
-      button.innerHTML = renderTogglePill(expanded);
+      button.setAttribute('aria-label', expanded ? '收起' : '展开');
+      button.innerHTML = renderToggleIcon(expanded);
       if (expanded) {
         const top = body.getBoundingClientRect().top + window.scrollY - 80;
         const reduceMotion = window.matchMedia(
