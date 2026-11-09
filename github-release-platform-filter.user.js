@@ -66,7 +66,7 @@
       name: 'Linux',
       icon: ICONS.linux,
       pattern:
-        /\.(?:deb|rpm|appimage|flatpak|snap)\b|(?:^|[-_.\s])(?:linux|ubuntu|debian|fedora|freebsd|arch)(?:[-_.\s]|$)/i,
+        /\.(?:deb|rpm|appimage|flatpak|snap)\b|(?:^|[-_.\s])(?:linux|ubuntu|debian|fedora|freebsd|solaris|arch)(?:[-_.\s]|$)/i,
     },
     {
       id: 'android',
@@ -77,122 +77,127 @@
   ];
   const PLATFORM_IDS = PLATFORMS.map((platform) => platform.id);
 
-  const ARCHITECTURES = {
-    windows: [
-      {
-        id: 'x64',
-        name: 'x64',
-        pattern: /(?:^|[-_.\s])(?:x86_64|amd64|x64|win64)(?=$|[-_.\s])/i,
-      },
-      {
-        id: 'arm64',
-        name: 'ARM64',
-        pattern: /(?:^|[-_.\s])(?:arm64|aarch64)(?=$|[-_.\s])/i,
-      },
-      {
-        id: 'x86',
-        name: 'x86',
-        pattern:
-          /(?:^|[-_.\s])(?:x86(?![-_.]?64)|x32|i[3-6]86|ia32)(?=$|[-_.\s])/i,
-      },
-    ],
-    macos: [
-      {
-        id: 'arm64',
-        name: 'Apple Silicon',
-        pattern:
-          /(?:^|[-_.\s])(?:arm64|aarch64|apple[-_.]?silicon|silicon)(?=$|[-_.\s])/i,
-      },
-      {
-        id: 'x64',
-        name: 'Intel',
-        pattern: /(?:^|[-_.\s])(?:x86_64|amd64|x64|intel)(?=$|[-_.\s])/i,
-      },
-      {
-        id: 'universal',
-        name: 'Universal',
-        pattern: /(?:^|[-_.\s])(?:universal|fat)(?=$|[-_.\s])/i,
-      },
-    ],
-    linux: [
-      {
-        id: 'x64',
-        name: 'x86_64',
-        pattern: /(?:^|[-_.\s])(?:x86_64|amd64|x64)(?=$|[-_.\s])/i,
-      },
-      {
-        id: 'x86',
-        name: 'x86',
-        pattern:
-          /(?:^|[-_.\s])(?:x86(?![-_.]?64)|x32|i[3-6]86|386)(?=$|[-_.\s])/i,
-      },
-      {
-        id: 'arm64',
-        name: 'ARM64',
-        pattern: /(?:^|[-_.\s])(?:arm64|aarch64)(?=$|[-_.\s])/i,
-      },
-      {
-        id: 'arm',
-        name: 'ARM',
-        pattern:
-          /(?:^|[-_.\s])(?:armv[5-8]\w*|armhf|armel|arm)(?=$|[-_.\s])/i,
-      },
-      {
-        id: 'mips',
-        name: 'MIPS',
-        pattern: /(?:^|[-_.\s])mips(?:el|le)?(?=$|[-_.\s])/i,
-      },
-      {
-        id: 'mips64',
-        name: 'MIPS64',
-        pattern: /(?:^|[-_.\s])mips64(?:el|le)?(?=$|[-_.\s])/i,
-      },
-      {
-        id: 'riscv64',
-        name: 'RISC-V',
-        pattern: /(?:^|[-_.\s])riscv64(?=$|[-_.\s])/i,
-      },
-      {
-        id: 'ppc64le',
-        name: 'PPC64LE',
-        pattern: /(?:^|[-_.\s])ppc64le(?=$|[-_.\s])/i,
-      },
-      {
-        id: 's390x',
-        name: 's390x',
-        pattern: /(?:^|[-_.\s])s390x(?=$|[-_.\s])/i,
-      },
-    ],
-    android: [
-      {
-        id: 'arm64',
-        name: 'arm64-v8a',
-        pattern:
-          /(?:^|[-_.\s])(?:arm64[-_.]?v8a|arm64|aarch64)(?=$|[-_.\s])/i,
-      },
-      {
-        id: 'arm',
-        name: 'armeabi-v7a',
-        pattern:
-          /(?:^|[-_.\s])(?:armeabi[-_.]?v7a|armeabi|armv7\w*)(?=$|[-_.\s])/i,
-      },
-      {
-        id: 'x86_64',
-        name: 'x86_64',
-        pattern: /(?:^|[-_.\s])(?:x86_64|x64)(?=$|[-_.\s])/i,
-      },
-      {
-        id: 'x86',
-        name: 'x86',
-        pattern:
-          /(?:^|[-_.\s])(?:x86(?![-_.]?64)|x32|i[3-6]86|386)(?=$|[-_.\s])/i,
-      },
-      {
-        id: 'universal',
-        name: '通用',
-        pattern: /(?:^|[-_.\s])(?:universal|all)(?=$|[-_.\s])/i,
-      },
-    ],
+  const VARIANT_TOKENS = [
+    {
+      id: 'x64',
+      name: 'x64',
+      pattern:
+        /(?:^|[-_.\s])(?:x86[_-]?64|amd64|x64|win64|intel)(?=$|[-_.\s])/i,
+    },
+    {
+      id: 'x32',
+      name: 'x32',
+      pattern:
+        /(?:^|[-_.\s])(?:x32|x86(?![-_.]?64)|i[3-6]86|ia32|win32|386)(?=$|[-_.\s])/i,
+    },
+    {
+      id: 'arm64',
+      name: 'arm64',
+      pattern:
+        /(?:^|[-_.\s])(?:arm64(?:[-_.]?v8a)?|aarch64|apple[-_.]?silicon|silicon)(?=$|[-_.\s])/i,
+    },
+    {
+      id: 'armv8',
+      name: 'armv8',
+      pattern: /(?:^|[-_.\s])armv8\w*(?=$|[-_.\s])/i,
+    },
+    {
+      id: 'armv7',
+      name: 'armv7',
+      pattern:
+        /(?:^|[-_.\s])(?:armv7\w*|armeabi[-_.]?v7a|armeabi)(?=$|[-_.\s])/i,
+    },
+    {
+      id: 'armv6',
+      name: 'armv6',
+      pattern: /(?:^|[-_.\s])armv6\w*(?=$|[-_.\s])/i,
+    },
+    {
+      id: 'armv5',
+      name: 'armv5',
+      pattern: /(?:^|[-_.\s])armv5\w*(?=$|[-_.\s])/i,
+    },
+    {
+      id: 'armhf',
+      name: 'armhf',
+      pattern: /(?:^|[-_.\s])armhf(?=$|[-_.\s])/i,
+    },
+    {
+      id: 'armel',
+      name: 'armel',
+      pattern: /(?:^|[-_.\s])armel(?=$|[-_.\s])/i,
+    },
+    {
+      id: 'arm',
+      name: 'arm',
+      pattern: /(?:^|[-_.\s])arm(?=$|[-_.\s])/i,
+    },
+    {
+      id: 'mips',
+      name: 'mips',
+      pattern: /(?:^|[-_.\s])mips(?!\d)(?=$|[-_.\s])/i,
+    },
+    {
+      id: 'mips64',
+      name: 'mips64',
+      pattern: /(?:^|[-_.\s])mips64(?=$|[-_.\s])/i,
+    },
+    {
+      id: 'mipsle',
+      name: 'mipsle',
+      pattern: /(?:^|[-_.\s])mips(?:le|el)(?=$|[-_.\s])/i,
+    },
+    {
+      id: 'mips64le',
+      name: 'mips64le',
+      pattern: /(?:^|[-_.\s])mips64(?:le|el)(?=$|[-_.\s])/i,
+    },
+    {
+      id: 'riscv64',
+      name: 'riscv64',
+      pattern: /(?:^|[-_.\s])riscv64(?=$|[-_.\s])/i,
+    },
+    {
+      id: 'ppc64le',
+      name: 'ppc64le',
+      pattern: /(?:^|[-_.\s])(?:ppc64le|powerpc64le)(?=$|[-_.\s])/i,
+    },
+    {
+      id: 's390x',
+      name: 's390x',
+      pattern: /(?:^|[-_.\s])s390x(?=$|[-_.\s])/i,
+    },
+    {
+      id: 'universal',
+      name: 'universal',
+      pattern: /(?:^|[-_.\s])(?:universal|fat)(?=$|[-_.\s])/i,
+    },
+    {
+      id: 'freebsd',
+      name: 'freebsd',
+      pattern: /(?:^|[-_.\s])freebsd(?=$|[-_.\s])/i,
+    },
+    {
+      id: 'openbsd',
+      name: 'openbsd',
+      pattern: /(?:^|[-_.\s])openbsd(?=$|[-_.\s])/i,
+    },
+    {
+      id: 'netbsd',
+      name: 'netbsd',
+      pattern: /(?:^|[-_.\s])netbsd(?=$|[-_.\s])/i,
+    },
+    {
+      id: 'solaris',
+      name: 'solaris',
+      pattern: /(?:^|[-_.\s])solaris(?=$|[-_.\s])/i,
+    },
+  ];
+  const VARIANT_TOKEN_IDS = VARIANT_TOKENS.map((token) => token.id);
+  const LEGACY_ARCHITECTURE_MAP = {
+    x86: ['x32'],
+    x86_64: ['x64'],
+    arm: ['armv5', 'armv6', 'armv7', 'armv8', 'armhf', 'armel', 'arm'],
   };
 
   const EXTRA_CATEGORIES = [
@@ -821,19 +826,22 @@
       if (!selectedCategories.includes(platformId)) return;
       const raw = stored[platformId];
       if (!Array.isArray(raw)) return;
-      const valid = ARCHITECTURES[platformId]
-        .filter((definition) => raw.includes(definition.id))
-        .map((definition) => definition.id);
+      const expanded = [];
+      raw.forEach((id) => {
+        (LEGACY_ARCHITECTURE_MAP[id] || [id]).forEach((item) => {
+          if (!expanded.includes(item)) expanded.push(item);
+        });
+      });
+      const valid = VARIANT_TOKEN_IDS.filter((id) => expanded.includes(id));
       if (valid.length) result[platformId] = valid;
     });
     return result;
   }
 
-  function getArchitectureMatches(platformId, name) {
-    const definitions = ARCHITECTURES[platformId] || [];
-    return definitions
-      .filter((definition) => definition.pattern.test(name))
-      .map((definition) => definition.id);
+  function getVariantMatches(name) {
+    return VARIANT_TOKENS.filter((token) => token.pattern.test(name)).map(
+      (token) => token.id
+    );
   }
 
   function getSelectedArchitectures(platformId) {
@@ -986,7 +994,7 @@
       if (!selectedCategories.includes(platformId)) return false;
       const selectedArchs = getSelectedArchitectures(platformId);
       if (selectedArchs.length) {
-        const assetArchs = getArchitectureMatches(platformId, name);
+        const assetArchs = getVariantMatches(name);
         if (assetArchs.length && !assetArchs.some((id) => selectedArchs.includes(id))) {
           return false;
         }
@@ -1024,7 +1032,7 @@
         if (matchedPlatforms.length) {
           matchedPlatforms.forEach((id) => {
             counts[id] += 1;
-            const assetArchs = getArchitectureMatches(id, name);
+            const assetArchs = getVariantMatches(name);
             assetArchs.forEach((archId) => {
               archCounts[id][archId] = (archCounts[id][archId] || 0) + 1;
             });
@@ -1049,7 +1057,7 @@
     return { total: assets.length, visible, counts, archCounts, typeCounts };
   }
 
-  function pruneUnavailablePackageTypes() {
+  function pruneUnavailableFilters() {
     if (
       !getAssets().length ||
       getPendingAssetsFragment() ||
@@ -1057,21 +1065,35 @@
     ) {
       return false;
     }
-    const { typeCounts } = getStats();
+
     let changed = false;
-    const next = {};
+    let stats = getStats();
+
+    const nextArchs = {};
+    Object.entries(selectedArchitectures).forEach(([platformId, archs]) => {
+      const counts = stats.archCounts[platformId] || {};
+      const kept = archs.filter((archId) => (counts[archId] || 0) > 0);
+      if (kept.length !== archs.length) changed = true;
+      if (kept.length) nextArchs[platformId] = kept;
+    });
+    if (changed) {
+      selectedArchitectures = nextArchs;
+      stats = getStats();
+    }
+
+    const nextTypes = {};
     Object.entries(selectedPackageTypes).forEach(([platformId, types]) => {
-      const counts = typeCounts[platformId] || {};
+      const counts = stats.typeCounts[platformId] || {};
       const kept = types.filter((typeId) => (counts[typeId] || 0) > 0);
       if (kept.length !== types.length) changed = true;
-      if (kept.length) next[platformId] = kept;
+      if (kept.length) nextTypes[platformId] = kept;
     });
-    if (changed) selectedPackageTypes = next;
+    if (changed) selectedPackageTypes = nextTypes;
     return changed;
   }
 
   function applyFilters() {
-    pruneUnavailablePackageTypes();
+    pruneUnavailableFilters();
     getAssets().forEach((asset) => {
       asset.classList.toggle('hidden-asset', !shouldShowAsset(asset));
     });
@@ -1177,7 +1199,7 @@
   let saveFeedbackTimer = null;
 
   function savePreference() {
-    pruneUnavailablePackageTypes();
+    pruneUnavailableFilters();
     GM_setValue(STORAGE_KEY, selectedCategories);
     GM_setValue(ARCH_STORAGE_KEY, selectedArchitectures);
     GM_setValue(TYPE_STORAGE_KEY, selectedPackageTypes);
@@ -1203,6 +1225,27 @@
       window.clearTimeout(saveFeedbackTimer);
       saveFeedbackTimer = null;
     }
+  }
+
+  function createVariantChip(platformId, token, archData) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'arch-chip';
+    chip.dataset.arch = token.id;
+    chip.setAttribute('aria-pressed', 'false');
+    chip.appendChild(document.createTextNode(token.name));
+    const countEl = document.createElement('span');
+    countEl.className = 'arch-chip-count';
+    countEl.textContent = '0';
+    chip.appendChild(countEl);
+    chip.addEventListener('click', (event) => {
+      event.stopPropagation();
+      toggleArchitecture(platformId, token.id);
+    });
+    archData.archesInner.insertBefore(chip, archData.chipsBreak);
+    const chipData = { button: chip, countEl };
+    archData.chips.set(token.id, chipData);
+    return chipData;
   }
 
   function syncPanel() {
@@ -1256,17 +1299,23 @@
       const activeArchs = getSelectedArchitectures(platform.id);
       let hasChipOptions = false;
 
-      ARCHITECTURES[platform.id].forEach((definition) => {
-        const chipData = archData.chips.get(definition.id);
-        if (!chipData) return;
-        const count = platformArchCounts[definition.id] || 0;
-        const selected = activeArchs.includes(definition.id);
+      VARIANT_TOKENS.forEach((token) => {
+        const count = platformArchCounts[token.id] || 0;
+        const selected = activeArchs.includes(token.id);
         const show = count > 0 || selected;
+        let chipData = archData.chips.get(token.id);
+        if (show && !chipData) {
+          chipData = createVariantChip(platform.id, token, archData);
+        }
+        if (!chipData) return;
         chipData.button.hidden = !show;
         chipData.button.classList.toggle('selected', selected);
         chipData.button.setAttribute('aria-pressed', String(selected));
         chipData.countEl.textContent = String(count);
-        if (show) hasChipOptions = true;
+        if (show) {
+          hasChipOptions = true;
+          archData.archesInner.insertBefore(chipData.button, archData.chipsBreak);
+        }
       });
 
       const platformTypeCounts = typeCounts[platform.id] || {};
@@ -1405,34 +1454,19 @@
       }
       entry.appendChild(row);
 
-      if (ARCHITECTURES[category.id]) {
+      if (PLATFORM_IDS.includes(category.id)) {
         const archesEl = document.createElement('div');
         archesEl.className = 'platform-arches';
         archesEl.hidden = true;
         const archesInner = document.createElement('div');
         archesInner.className = 'platform-arches-inner';
         archesInner.setAttribute('role', 'group');
-        archesInner.setAttribute('aria-label', `${category.name} 架构与安装类型`);
+        archesInner.setAttribute(
+          'aria-label',
+          `${category.name} 架构、系统与安装类型`
+        );
 
         const chips = new Map();
-        ARCHITECTURES[category.id].forEach((definition) => {
-          const chip = document.createElement('button');
-          chip.type = 'button';
-          chip.className = 'arch-chip';
-          chip.dataset.arch = definition.id;
-          chip.setAttribute('aria-pressed', 'false');
-          chip.appendChild(document.createTextNode(definition.name));
-          const chipCountEl = document.createElement('span');
-          chipCountEl.className = 'arch-chip-count';
-          chipCountEl.textContent = '0';
-          chip.appendChild(chipCountEl);
-          chip.addEventListener('click', (event) => {
-            event.stopPropagation();
-            toggleArchitecture(category.id, definition.id);
-          });
-          archesInner.appendChild(chip);
-          chips.set(definition.id, { button: chip, countEl: chipCountEl });
-        });
 
         const chipsBreak = document.createElement('span');
         chipsBreak.className = 'chips-break';
@@ -1464,6 +1498,8 @@
         archEls.set(category.id, {
           entry,
           archesEl,
+          archesInner,
+          chipsBreak,
           chips,
           typeChips,
           moveButtons,
