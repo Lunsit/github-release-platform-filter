@@ -1049,7 +1049,29 @@
     return { total: assets.length, visible, counts, archCounts, typeCounts };
   }
 
+  function pruneUnavailablePackageTypes() {
+    if (
+      !getAssets().length ||
+      getPendingAssetsFragment() ||
+      document.querySelector('.js-release-asset-untruncate-btn')
+    ) {
+      return false;
+    }
+    const { typeCounts } = getStats();
+    let changed = false;
+    const next = {};
+    Object.entries(selectedPackageTypes).forEach(([platformId, types]) => {
+      const counts = typeCounts[platformId] || {};
+      const kept = types.filter((typeId) => (counts[typeId] || 0) > 0);
+      if (kept.length !== types.length) changed = true;
+      if (kept.length) next[platformId] = kept;
+    });
+    if (changed) selectedPackageTypes = next;
+    return changed;
+  }
+
   function applyFilters() {
+    pruneUnavailablePackageTypes();
     getAssets().forEach((asset) => {
       asset.classList.toggle('hidden-asset', !shouldShowAsset(asset));
     });
@@ -1155,14 +1177,7 @@
   let saveFeedbackTimer = null;
 
   function savePreference() {
-    const { typeCounts } = getStats();
-    const prunedTypes = {};
-    Object.entries(selectedPackageTypes).forEach(([platformId, types]) => {
-      const counts = typeCounts[platformId] || {};
-      const kept = types.filter((typeId) => (counts[typeId] || 0) > 0);
-      if (kept.length) prunedTypes[platformId] = kept;
-    });
-    selectedPackageTypes = prunedTypes;
+    pruneUnavailablePackageTypes();
     GM_setValue(STORAGE_KEY, selectedCategories);
     GM_setValue(ARCH_STORAGE_KEY, selectedArchitectures);
     GM_setValue(TYPE_STORAGE_KEY, selectedPackageTypes);
