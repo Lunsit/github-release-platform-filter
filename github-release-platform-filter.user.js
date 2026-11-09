@@ -2,9 +2,9 @@
 // @name         GitHub发布平台筛选器
 // @name:en      GitHub Release Platform Filter
 // @namespace    https://github.com/eecopilot
-// @version      0.4.0
-// @description  筛选GitHub发布资源的平台，优化发布说明显示，适配明暗主题
-// @description:en  Filter GitHub release assets by platform, collapse long release notes, with light/dark theme support
+// @version      0.5.0
+// @description  按平台与架构筛选GitHub发布资源，优化发布说明显示，适配明暗主题
+// @description:en  Filter GitHub release assets by platform and architecture, collapse long release notes, with light/dark theme support
 // @author       EEP
 // @contributor  Lunsit
 // @match        https://github.com/*
@@ -22,6 +22,7 @@
   'use strict';
 
   const STORAGE_KEY = 'selectedPlatforms';
+  const ARCH_STORAGE_KEY = 'selectedArchitectures';
   const COLLAPSE_LIMIT = 300;
   const ASSET_ROW_SELECTOR =
     '.Box--condensed .Box-row.d-flex.flex-column.flex-md-row';
@@ -69,6 +70,114 @@
     },
   ];
   const PLATFORM_IDS = PLATFORMS.map((platform) => platform.id);
+
+  const ARCHITECTURES = {
+    windows: [
+      {
+        id: 'x64',
+        name: 'x64',
+        pattern: /(?:^|[-_.\s])(?:x86_64|amd64|x64|win64)(?=$|[-_.\s])/i,
+      },
+      {
+        id: 'arm64',
+        name: 'ARM64',
+        pattern: /(?:^|[-_.\s])(?:arm64|aarch64)(?=$|[-_.\s])/i,
+      },
+      {
+        id: 'x86',
+        name: 'x86',
+        pattern:
+          /(?:^|[-_.\s])(?:x86(?![-_.]?64)|i[3-6]86|ia32)(?=$|[-_.\s])/i,
+      },
+    ],
+    macos: [
+      {
+        id: 'arm64',
+        name: 'Apple Silicon',
+        pattern:
+          /(?:^|[-_.\s])(?:arm64|aarch64|apple[-_.]?silicon|silicon)(?=$|[-_.\s])/i,
+      },
+      {
+        id: 'x64',
+        name: 'Intel',
+        pattern: /(?:^|[-_.\s])(?:x86_64|amd64|x64|intel)(?=$|[-_.\s])/i,
+      },
+      {
+        id: 'universal',
+        name: 'Universal',
+        pattern: /(?:^|[-_.\s])(?:universal|fat)(?=$|[-_.\s])/i,
+      },
+    ],
+    linux: [
+      {
+        id: 'x64',
+        name: 'x86_64',
+        pattern: /(?:^|[-_.\s])(?:x86_64|amd64|x64)(?=$|[-_.\s])/i,
+      },
+      {
+        id: 'arm64',
+        name: 'ARM64',
+        pattern: /(?:^|[-_.\s])(?:arm64|aarch64)(?=$|[-_.\s])/i,
+      },
+      {
+        id: 'x86',
+        name: 'x86',
+        pattern:
+          /(?:^|[-_.\s])(?:x86(?![-_.]?64)|i[3-6]86|386)(?=$|[-_.\s])/i,
+      },
+      {
+        id: 'arm',
+        name: 'ARM',
+        pattern:
+          /(?:^|[-_.\s])(?:armv[5-8]\w*|armhf|armel|arm)(?=$|[-_.\s])/i,
+      },
+      {
+        id: 'riscv64',
+        name: 'RISC-V',
+        pattern: /(?:^|[-_.\s])riscv64(?=$|[-_.\s])/i,
+      },
+      {
+        id: 'ppc64le',
+        name: 'PPC64LE',
+        pattern: /(?:^|[-_.\s])ppc64le(?=$|[-_.\s])/i,
+      },
+      {
+        id: 's390x',
+        name: 's390x',
+        pattern: /(?:^|[-_.\s])s390x(?=$|[-_.\s])/i,
+      },
+    ],
+    android: [
+      {
+        id: 'arm64',
+        name: 'arm64-v8a',
+        pattern:
+          /(?:^|[-_.\s])(?:arm64[-_.]?v8a|arm64|aarch64)(?=$|[-_.\s])/i,
+      },
+      {
+        id: 'arm',
+        name: 'armeabi-v7a',
+        pattern:
+          /(?:^|[-_.\s])(?:armeabi[-_.]?v7a|armeabi|armv7\w*)(?=$|[-_.\s])/i,
+      },
+      {
+        id: 'x86_64',
+        name: 'x86_64',
+        pattern: /(?:^|[-_.\s])(?:x86_64|x64)(?=$|[-_.\s])/i,
+      },
+      {
+        id: 'x86',
+        name: 'x86',
+        pattern:
+          /(?:^|[-_.\s])(?:x86(?![-_.]?64)|i[3-6]86|386)(?=$|[-_.\s])/i,
+      },
+      {
+        id: 'universal',
+        name: '通用',
+        pattern: /(?:^|[-_.\s])(?:universal|all)(?=$|[-_.\s])/i,
+      },
+    ],
+  };
 
   const STYLES = `
     :root {
@@ -183,7 +292,9 @@
       position: absolute;
       top: calc(100% + 8px);
       right: 12px;
-      width: 264px;
+      width: 280px;
+      max-height: calc(100vh - 140px);
+      overflow-y: auto;
       padding: 8px;
       border: 1px solid var(--grpf-border);
       border-radius: 12px;
@@ -317,6 +428,92 @@
       height: 12px;
     }
 
+    .platform-entry {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .platform-arches {
+      display: grid;
+      grid-template-rows: 0fr;
+      transition: grid-template-rows 0.18s ease;
+    }
+
+    .platform-entry.selected .platform-arches {
+      grid-template-rows: 1fr;
+    }
+
+    .platform-entry:not(.selected) .platform-arches {
+      visibility: hidden;
+    }
+
+    .platform-arches[hidden] {
+      display: none;
+    }
+
+    .platform-arches-inner {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      overflow: hidden;
+      padding: 0 8px 0 46px;
+      transition: padding-bottom 0.18s ease;
+    }
+
+    .platform-entry.selected .platform-arches-inner {
+      padding-bottom: 7px;
+    }
+
+    .arch-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin: 0;
+      padding: 2px 8px;
+      border: 1px solid var(--grpf-border);
+      border-radius: 999px;
+      background: var(--grpf-bg);
+      color: var(--grpf-fg-muted);
+      font: inherit;
+      font-size: 11px;
+      line-height: 16px;
+      cursor: pointer;
+      transition: background-color 0.12s ease, border-color 0.12s ease,
+        color 0.12s ease;
+    }
+
+    .arch-chip:hover {
+      background: var(--grpf-bg-muted);
+    }
+
+    .arch-chip.selected {
+      border-color: var(--grpf-accent);
+      background: var(--grpf-accent-bg);
+      color: var(--grpf-accent);
+      font-weight: 600;
+    }
+
+    .arch-chip[hidden] {
+      display: none;
+    }
+
+    .arch-chip-count {
+      font-size: 10px;
+      font-variant-numeric: tabular-nums;
+      opacity: 0.75;
+    }
+
+    .arch-chip:focus-visible {
+      outline: 2px solid var(--grpf-accent);
+      outline-offset: 1px;
+    }
+
+    .platform-action.saved {
+      border-color: var(--grpf-accent);
+      background: var(--grpf-accent-bg);
+      color: var(--grpf-accent);
+    }
+
     .platform-dropdown-footer {
       display: flex;
       gap: 6px;
@@ -440,6 +637,8 @@
     @media (prefers-reduced-motion: reduce) {
       .platform-filter,
       .platform-filter *,
+      .platform-arches,
+      .platform-arches-inner,
       .markdown-body.grpf-collapsible,
       .toggle-pill {
         transition: none !important;
@@ -449,14 +648,17 @@
 
   const currentPlatform = getCurrentPlatform();
   let selectedPlatforms = loadSelection();
+  let selectedArchitectures = loadArchitectureSelection();
 
   let panel = null;
   let dropdown = null;
   let filterButton = null;
   let summaryEl = null;
   let badgeEl = null;
+  let saveButtonEl = null;
   const optionEls = new Map();
   const countEls = new Map();
+  const archEls = new Map();
 
   let refreshTimer = null;
   let contentObserver = null;
@@ -486,11 +688,38 @@
   function loadSelection() {
     const stored = GM_getValue(STORAGE_KEY, null);
     if (!Array.isArray(stored)) {
-      const initial = currentPlatform ? [currentPlatform] : [];
-      GM_setValue(STORAGE_KEY, initial);
-      return initial;
+      return currentPlatform ? [currentPlatform] : [];
     }
     return PLATFORM_IDS.filter((id) => stored.includes(id));
+  }
+
+  function loadArchitectureSelection() {
+    const stored = GM_getValue(ARCH_STORAGE_KEY, null);
+    if (!stored || typeof stored !== 'object' || Array.isArray(stored)) {
+      return {};
+    }
+    const result = {};
+    PLATFORM_IDS.forEach((platformId) => {
+      if (!selectedPlatforms.includes(platformId)) return;
+      const raw = stored[platformId];
+      if (!Array.isArray(raw)) return;
+      const valid = ARCHITECTURES[platformId]
+        .filter((definition) => raw.includes(definition.id))
+        .map((definition) => definition.id);
+      if (valid.length) result[platformId] = valid;
+    });
+    return result;
+  }
+
+  function getArchitectureMatches(platformId, name) {
+    const definitions = ARCHITECTURES[platformId] || [];
+    return definitions
+      .filter((definition) => definition.pattern.test(name))
+      .map((definition) => definition.id);
+  }
+
+  function getSelectedArchitectures(platformId) {
+    return selectedArchitectures[platformId] || [];
   }
 
   function getPlatformMatches(text) {
@@ -516,29 +745,44 @@
 
   function shouldShowAsset(asset) {
     if (selectedPlatforms.length === 0) return true;
-    const matches = getPlatformMatches(getAssetName(asset));
+    const name = getAssetName(asset);
+    const matches = getPlatformMatches(name);
     const isPlatformSpecific = PLATFORM_IDS.some((id) => matches[id]);
     if (!isPlatformSpecific) return true;
-    return selectedPlatforms.some((id) => matches[id]);
+    return selectedPlatforms.some((platformId) => {
+      if (!matches[platformId]) return false;
+      const selectedArchs = getSelectedArchitectures(platformId);
+      if (!selectedArchs.length) return true;
+      const assetArchs = getArchitectureMatches(platformId, name);
+      if (!assetArchs.length) return true;
+      return assetArchs.some((id) => selectedArchs.includes(id));
+    });
   }
 
   function getStats() {
     const counts = {};
+    const archCounts = {};
     PLATFORM_IDS.forEach((id) => {
       counts[id] = 0;
+      archCounts[id] = {};
     });
 
     let visible = 0;
     const assets = getAssets();
     assets.forEach((asset) => {
-      const matches = getPlatformMatches(getAssetName(asset));
+      const name = getAssetName(asset);
+      const matches = getPlatformMatches(name);
       PLATFORM_IDS.forEach((id) => {
-        if (matches[id]) counts[id] += 1;
+        if (!matches[id]) return;
+        counts[id] += 1;
+        getArchitectureMatches(id, name).forEach((archId) => {
+          archCounts[id][archId] = (archCounts[id][archId] || 0) + 1;
+        });
       });
       if (shouldShowAsset(asset)) visible += 1;
     });
 
-    return { total: assets.length, visible, counts };
+    return { total: assets.length, visible, counts, archCounts };
   }
 
   function applyFilters() {
@@ -550,7 +794,13 @@
 
   function setSelectedPlatforms(next) {
     selectedPlatforms = PLATFORM_IDS.filter((id) => next.includes(id));
-    GM_setValue(STORAGE_KEY, selectedPlatforms);
+    const prunedArchs = {};
+    selectedPlatforms.forEach((platformId) => {
+      if (selectedArchitectures[platformId]) {
+        prunedArchs[platformId] = selectedArchitectures[platformId];
+      }
+    });
+    selectedArchitectures = prunedArchs;
     applyFilters();
   }
 
@@ -561,10 +811,60 @@
     setSelectedPlatforms(next);
   }
 
+  function toggleArchitecture(platformId, archId) {
+    if (!selectedPlatforms.includes(platformId)) return;
+    const current = getSelectedArchitectures(platformId);
+    const next = current.includes(archId)
+      ? current.filter((id) => id !== archId)
+      : current.concat(archId);
+    const copy = { ...selectedArchitectures };
+    if (next.length) {
+      copy[platformId] = next;
+    } else {
+      delete copy[platformId];
+    }
+    selectedArchitectures = copy;
+    applyFilters();
+  }
+
+  function clearArchitectures(platformId) {
+    if (!selectedArchitectures[platformId]) return;
+    const copy = { ...selectedArchitectures };
+    delete copy[platformId];
+    selectedArchitectures = copy;
+    applyFilters();
+  }
+
+  let saveFeedbackTimer = null;
+
+  function savePreference() {
+    GM_setValue(STORAGE_KEY, selectedPlatforms);
+    GM_setValue(ARCH_STORAGE_KEY, selectedArchitectures);
+    if (!saveButtonEl) return;
+    saveButtonEl.textContent = '已保存';
+    saveButtonEl.classList.add('saved');
+    if (saveFeedbackTimer) window.clearTimeout(saveFeedbackTimer);
+    saveFeedbackTimer = window.setTimeout(() => {
+      saveButtonEl.textContent = '保存为偏好';
+      saveButtonEl.classList.remove('saved');
+      saveFeedbackTimer = null;
+    }, 1500);
+  }
+
+  function resetSaveButton() {
+    if (!saveButtonEl) return;
+    saveButtonEl.textContent = '保存为偏好';
+    saveButtonEl.classList.remove('saved');
+    if (saveFeedbackTimer) {
+      window.clearTimeout(saveFeedbackTimer);
+      saveFeedbackTimer = null;
+    }
+  }
+
   function syncPanel() {
     if (!panel) return;
 
-    const { total, visible, counts } = getStats();
+    const { total, visible, counts, archCounts } = getStats();
     const filtering = selectedPlatforms.length > 0;
 
     panel.dataset.filtering = String(filtering);
@@ -598,6 +898,31 @@
       option.classList.toggle('selected', active);
       option.setAttribute('aria-checked', String(active));
       countEl.textContent = String(counts[platform.id]);
+
+      const archData = archEls.get(platform.id);
+      if (!archData) return;
+      archData.entry.classList.toggle('selected', active);
+      const platformArchCounts = archCounts[platform.id] || {};
+      const activeArchs = getSelectedArchitectures(platform.id);
+      let hasArchOptions = false;
+
+      ARCHITECTURES[platform.id].forEach((definition) => {
+        const chipData = archData.chips.get(definition.id);
+        if (!chipData) return;
+        const count = platformArchCounts[definition.id] || 0;
+        const selected = activeArchs.includes(definition.id);
+        const show = count > 0 || selected;
+        chipData.button.hidden = !show;
+        chipData.button.classList.toggle('selected', selected);
+        chipData.button.setAttribute('aria-pressed', String(selected));
+        chipData.countEl.textContent = String(count);
+        if (show) hasArchOptions = true;
+      });
+
+      const allSelected = activeArchs.length === 0;
+      archData.allChip.classList.toggle('selected', allSelected);
+      archData.allChip.setAttribute('aria-pressed', String(allSelected));
+      archData.archesEl.hidden = !hasArchOptions;
     });
   }
 
@@ -655,7 +980,7 @@
       </div>
       <div class="platform-options" role="group" aria-label="平台"></div>
       <div class="platform-dropdown-footer">
-        <button type="button" class="platform-action" data-action="current"></button>
+        <button type="button" class="platform-action" data-action="save">保存为偏好</button>
         <button type="button" class="platform-action" data-action="all">显示全部</button>
       </div>
     `;
@@ -665,6 +990,10 @@
     const optionsEl = dropdown.querySelector('.platform-options');
 
     PLATFORMS.forEach((platform) => {
+      const entry = document.createElement('div');
+      entry.className = 'platform-entry';
+      entry.dataset.platform = platform.id;
+
       const option = document.createElement('button');
       option.type = 'button';
       option.className = 'platform-option';
@@ -681,21 +1010,61 @@
         event.stopPropagation();
         togglePlatform(platform.id);
       });
-      optionsEl.appendChild(option);
+      entry.appendChild(option);
+
+      const archesEl = document.createElement('div');
+      archesEl.className = 'platform-arches';
+      archesEl.hidden = true;
+      const archesInner = document.createElement('div');
+      archesInner.className = 'platform-arches-inner';
+      archesInner.setAttribute('role', 'group');
+      archesInner.setAttribute('aria-label', `${platform.name} 架构`);
+
+      const allChip = document.createElement('button');
+      allChip.type = 'button';
+      allChip.className = 'arch-chip';
+      allChip.dataset.arch = 'all';
+      allChip.textContent = '全部';
+      allChip.title = '清除该平台的架构筛选';
+      allChip.setAttribute('aria-pressed', 'true');
+      allChip.addEventListener('click', (event) => {
+        event.stopPropagation();
+        clearArchitectures(platform.id);
+      });
+      archesInner.appendChild(allChip);
+
+      const chips = new Map();
+      ARCHITECTURES[platform.id].forEach((definition) => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'arch-chip';
+        chip.dataset.arch = definition.id;
+        chip.setAttribute('aria-pressed', 'false');
+        chip.appendChild(document.createTextNode(definition.name));
+        const chipCountEl = document.createElement('span');
+        chipCountEl.className = 'arch-chip-count';
+        chipCountEl.textContent = '0';
+        chip.appendChild(chipCountEl);
+        chip.addEventListener('click', (event) => {
+          event.stopPropagation();
+          toggleArchitecture(platform.id, definition.id);
+        });
+        archesInner.appendChild(chip);
+        chips.set(definition.id, { button: chip, countEl: chipCountEl });
+      });
+
+      archesEl.appendChild(archesInner);
+      entry.appendChild(archesEl);
+      optionsEl.appendChild(entry);
+
       optionEls.set(platform.id, option);
       countEls.set(platform.id, option.querySelector('.platform-option-count'));
+      archEls.set(platform.id, { entry, archesEl, allChip, chips });
     });
 
-    const currentAction = dropdown.querySelector('[data-action="current"]');
-    const currentName = currentPlatform
-      ? (PLATFORMS.find((platform) => platform.id === currentPlatform) || {})
-          .name
-      : null;
-    currentAction.textContent = currentName ? `仅 ${currentName}` : '当前平台';
-    currentAction.disabled = !currentName;
-    currentAction.addEventListener('click', () => {
-      setSelectedPlatforms(currentPlatform ? [currentPlatform] : []);
-    });
+    saveButtonEl = dropdown.querySelector('[data-action="save"]');
+    saveButtonEl.addEventListener('click', savePreference);
+    resetSaveButton();
 
     dropdown
       .querySelector('[data-action="all"]')
@@ -729,8 +1098,14 @@
     filterButton = null;
     summaryEl = null;
     badgeEl = null;
+    saveButtonEl = null;
     optionEls.clear();
     countEls.clear();
+    archEls.clear();
+    if (saveFeedbackTimer) {
+      window.clearTimeout(saveFeedbackTimer);
+      saveFeedbackTimer = null;
+    }
   }
 
   function ensurePanel() {
