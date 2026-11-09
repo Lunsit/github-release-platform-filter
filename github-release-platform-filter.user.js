@@ -2,7 +2,7 @@
 // @name         GitHub发布平台筛选器
 // @name:en      GitHub Release Platform Filter
 // @namespace    https://github.com/eecopilot
-// @version      0.4.1
+// @version      0.4.3
 // @description  按平台、架构与类别筛选GitHub发布资源，优化发布说明显示，适配明暗主题
 // @description:en  Filter GitHub release assets by platform, architecture and category, collapse long release notes, with light/dark theme support
 // @author       EEP
@@ -23,6 +23,8 @@
 
   const STORAGE_KEY = 'selectedPlatforms';
   const ARCH_STORAGE_KEY = 'selectedArchitectures';
+  const TYPE_STORAGE_KEY = 'selectedPackageTypes';
+  const ORDER_STORAGE_KEY = 'platformOrder';
   const FILTER_SCHEMA_KEY = 'filterSchemaVersion';
   const FILTER_SCHEMA_VERSION = 1;
   const COLLAPSE_LIMIT = 300;
@@ -190,6 +192,22 @@
   const CATEGORIES = PLATFORMS.concat(EXTRA_CATEGORIES);
   const CATEGORY_IDS = CATEGORIES.map((category) => category.id);
 
+  const PACKAGE_TYPES = [
+    {
+      id: 'installer',
+      name: '安装包',
+      pattern:
+        /\.(?:exe|msi|msix|appx|dmg|pkg|mpkg|deb|rpm|apk|aab|apks|flatpak|snap)(?=[._]|$)|(?:^|[-_.\s])(?:setup|installer)(?=$|[-_.\s])/i,
+    },
+    {
+      id: 'portable',
+      name: '便携版',
+      pattern:
+        /(?:^|[-_.\s])(?:portable|standalone|no[-_.]?install)(?=$|[-_.\s])|\.appimage(?=[._]|$)/i,
+    },
+  ];
+  const PACKAGE_TYPE_IDS = PACKAGE_TYPES.map((type) => type.id);
+
   const STYLES = `
     :root {
       --grpf-bg: var(--bgColor-default, #ffffff);
@@ -353,11 +371,19 @@
       gap: 2px;
     }
 
+    .platform-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
     .platform-option {
       display: flex;
       align-items: center;
       gap: 10px;
-      width: 100%;
+      flex: 1;
+      min-width: 0;
+      width: auto;
       margin: 0;
       padding: 7px 8px;
       border: 0;
@@ -437,6 +463,51 @@
     .platform-option-check svg {
       width: 12px;
       height: 12px;
+    }
+
+    .platform-move {
+      display: none;
+      gap: 2px;
+      padding-right: 4px;
+    }
+
+    .platform-filter[data-reorder="true"] .platform-move {
+      display: flex;
+    }
+
+    .move-button {
+      display: grid;
+      place-items: center;
+      width: 22px;
+      height: 22px;
+      margin: 0;
+      padding: 0;
+      border: 1px solid var(--grpf-border);
+      border-radius: 5px;
+      background: var(--grpf-bg);
+      color: var(--grpf-fg-muted);
+      cursor: pointer;
+      transition: background-color 0.12s ease, color 0.12s ease;
+    }
+
+    .move-button:hover:not(:disabled) {
+      background: var(--grpf-bg-muted);
+      color: var(--grpf-fg);
+    }
+
+    .move-button:disabled {
+      opacity: 0.35;
+      cursor: default;
+    }
+
+    .move-button svg {
+      width: 12px;
+      height: 12px;
+    }
+
+    .move-button:focus-visible {
+      outline: 2px solid var(--grpf-accent);
+      outline-offset: 1px;
     }
 
     .platform-entry {
@@ -519,7 +590,13 @@
       outline-offset: 1px;
     }
 
-    .platform-action.saved {
+    .chips-break {
+      flex-basis: 100%;
+      height: 0;
+    }
+
+    .platform-action.saved,
+    .platform-action.active {
       border-color: var(--grpf-accent);
       background: var(--grpf-accent-bg);
       color: var(--grpf-accent);
@@ -649,6 +726,10 @@
       display: none !important;
     }
 
+    .Box--condensed .Box-row.grpf-group-start:not(:first-child) {
+      border-top: 1px solid var(--grpf-border);
+    }
+
     @media (prefers-reduced-motion: reduce) {
       .platform-filter,
       .platform-filter *,
@@ -664,6 +745,8 @@
   const currentPlatform = getCurrentPlatform();
   let selectedCategories = loadSelection();
   let selectedArchitectures = loadArchitectureSelection();
+  let selectedPackageTypes = loadPackageTypeSelection();
+  let platformOrder = loadPlatformOrder();
 
   let panel = null;
   let dropdown = null;
@@ -745,6 +828,46 @@
     return selectedArchitectures[platformId] || [];
   }
 
+  function loadPackageTypeSelection() {
+    const stored = GM_getValue(TYPE_STORAGE_KEY, null);
+    if (!stored || typeof stored !== 'object' || Array.isArray(stored)) {
+      return {};
+    }
+    const result = {};
+    PLATFORM_IDS.forEach((platformId) => {
+      if (!selectedCategories.includes(platformId)) return;
+      const raw = stored[platformId];
+      if (!Array.isArray(raw)) return;
+      const valid = PACKAGE_TYPE_IDS.filter((id) => raw.includes(id));
+      if (valid.length) result[platformId] = valid;
+    });
+    return result;
+  }
+
+  function getSelectedPackageTypes(platformId) {
+    return selectedPackageTypes[platformId] || [];
+  }
+
+  function loadPlatformOrder() {
+    const stored = GM_getValue(ORDER_STORAGE_KEY, null);
+    const order = [];
+    if (Array.isArray(stored)) {
+      stored.forEach((id) => {
+        if (PLATFORM_IDS.includes(id) && !order.includes(id)) order.push(id);
+      });
+    }
+    PLATFORM_IDS.forEach((id) => {
+      if (!order.includes(id)) order.push(id);
+    });
+    return order;
+  }
+
+  function getPackageTypeMatches(name) {
+    return PACKAGE_TYPES.filter((type) => type.pattern.test(name)).map(
+      (type) => type.id
+    );
+  }
+
   function getPlatformMatches(text) {
     const matches = {};
     PLATFORMS.forEach((platform) => {
@@ -763,12 +886,75 @@
     const nameEl = asset.querySelector(
       '.text-bold, .asset-name, a[href*="/releases/download/"]'
     );
-    return (nameEl || asset).textContent || '';
+    return ((nameEl || asset).textContent || '').trim();
   }
 
   function isSourceCodeAsset(asset) {
     if (asset.querySelector('a[href*="/archive/"]')) return true;
     return /^source code\b/i.test(getAssetName(asset).trim());
+  }
+
+  function getAssetGroupKey(asset) {
+    if (isSourceCodeAsset(asset)) return 'source';
+    const matches = getPlatformMatches(getAssetName(asset));
+    for (const platformId of platformOrder) {
+      if (matches[platformId]) return platformId;
+    }
+    return 'other';
+  }
+
+  function getGroupRank(group) {
+    const index = platformOrder.indexOf(group);
+    if (index !== -1) return index;
+    return group === 'other' ? platformOrder.length : platformOrder.length + 1;
+  }
+
+  function regroupAssets() {
+    document.querySelectorAll('.Box--condensed').forEach((container) => {
+      const rows = Array.from(container.querySelectorAll(ASSET_ROW_SELECTOR));
+      if (!rows.length) return;
+      const list = rows[0].parentElement;
+      if (!list) return;
+
+      const assetRows = rows.filter(
+        (row) => !row.querySelector('.js-release-asset-untruncate-btn')
+      );
+      if (!assetRows.length) return;
+
+      const ranked = assetRows
+        .map((row, index) => ({
+          row,
+          index,
+          rank: getGroupRank(getAssetGroupKey(row)),
+        }))
+        .sort((a, b) => a.rank - b.rank || a.index - b.index)
+        .map((item) => item.row);
+
+      const nonAssets = Array.from(list.children).filter(
+        (child) => !assetRows.includes(child)
+      );
+      const desired = ranked.concat(nonAssets);
+      const current = Array.from(list.children);
+      const sameOrder =
+        current.length === desired.length &&
+        current.every((child, index) => child === desired[index]);
+      if (!sameOrder) {
+        desired.forEach((child) => list.appendChild(child));
+      }
+
+      let lastGroup = null;
+      ranked.forEach((row) => {
+        const group = getAssetGroupKey(row);
+        row.dataset.grpfGroup = group;
+        row.classList.toggle('grpf-group-start', group !== lastGroup);
+        lastGroup = group;
+      });
+      nonAssets.forEach((child) => {
+        if (!(child instanceof HTMLElement)) return;
+        child.classList.remove('grpf-group-start');
+        delete child.dataset.grpfGroup;
+      });
+    });
   }
 
   function shouldShowAsset(asset) {
@@ -785,21 +971,31 @@
     return matchedPlatforms.some((platformId) => {
       if (!selectedCategories.includes(platformId)) return false;
       const selectedArchs = getSelectedArchitectures(platformId);
-      if (!selectedArchs.length) return true;
-      const assetArchs = getArchitectureMatches(platformId, name);
-      if (!assetArchs.length) return true;
-      return assetArchs.some((id) => selectedArchs.includes(id));
+      if (selectedArchs.length) {
+        const assetArchs = getArchitectureMatches(platformId, name);
+        if (assetArchs.length && !assetArchs.some((id) => selectedArchs.includes(id))) {
+          return false;
+        }
+      }
+      const selectedTypes = getSelectedPackageTypes(platformId);
+      if (selectedTypes.length) {
+        const assetTypes = getPackageTypeMatches(name);
+        if (!assetTypes.some((id) => selectedTypes.includes(id))) return false;
+      }
+      return true;
     });
   }
 
   function getStats() {
     const counts = {};
     const archCounts = {};
+    const typeCounts = {};
     CATEGORY_IDS.forEach((id) => {
       counts[id] = 0;
     });
     PLATFORM_IDS.forEach((id) => {
       archCounts[id] = {};
+      typeCounts[id] = {};
     });
 
     let visible = 0;
@@ -817,6 +1013,9 @@
             getArchitectureMatches(id, name).forEach((archId) => {
               archCounts[id][archId] = (archCounts[id][archId] || 0) + 1;
             });
+            getPackageTypeMatches(name).forEach((typeId) => {
+              typeCounts[id][typeId] = (typeCounts[id][typeId] || 0) + 1;
+            });
           });
         } else {
           counts.other += 1;
@@ -825,7 +1024,7 @@
       if (shouldShowAsset(asset)) visible += 1;
     });
 
-    return { total: assets.length, visible, counts, archCounts };
+    return { total: assets.length, visible, counts, archCounts, typeCounts };
   }
 
   function applyFilters() {
@@ -838,12 +1037,17 @@
   function setSelectedCategories(next) {
     selectedCategories = CATEGORY_IDS.filter((id) => next.includes(id));
     const prunedArchs = {};
+    const prunedTypes = {};
     selectedCategories.forEach((platformId) => {
       if (selectedArchitectures[platformId]) {
         prunedArchs[platformId] = selectedArchitectures[platformId];
       }
+      if (selectedPackageTypes[platformId]) {
+        prunedTypes[platformId] = selectedPackageTypes[platformId];
+      }
     });
     selectedArchitectures = prunedArchs;
+    selectedPackageTypes = prunedTypes;
     applyFilters();
   }
 
@@ -870,12 +1074,60 @@
     applyFilters();
   }
 
-  function clearArchitectures(platformId) {
-    if (!selectedArchitectures[platformId]) return;
-    const copy = { ...selectedArchitectures };
-    delete copy[platformId];
-    selectedArchitectures = copy;
+  function togglePackageType(platformId, typeId) {
+    if (!selectedCategories.includes(platformId)) return;
+    const current = getSelectedPackageTypes(platformId);
+    const next = current.includes(typeId)
+      ? current.filter((id) => id !== typeId)
+      : current.concat(typeId);
+    const copy = { ...selectedPackageTypes };
+    if (next.length) {
+      copy[platformId] = next;
+    } else {
+      delete copy[platformId];
+    }
+    selectedPackageTypes = copy;
     applyFilters();
+  }
+
+  function createMoveButton(platformId, direction, label) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'move-button';
+    button.dataset.direction = direction < 0 ? 'up' : 'down';
+    button.setAttribute('aria-label', label);
+    button.title = label;
+    button.innerHTML = direction < 0 ? ICONS.chevronUp : ICONS.chevronDown;
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      movePlatform(platformId, direction);
+    });
+    return button;
+  }
+
+  function movePlatform(platformId, direction) {
+    const index = platformOrder.indexOf(platformId);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= platformOrder.length) return;
+    const next = platformOrder.slice();
+    next[index] = platformOrder[target];
+    next[target] = platformOrder[index];
+    platformOrder = next;
+    GM_setValue(ORDER_STORAGE_KEY, platformOrder);
+    reorderPlatformEntries();
+    syncPanel();
+    regroupAssets();
+  }
+
+  function reorderPlatformEntries() {
+    if (!dropdown) return;
+    const optionsEl = dropdown.querySelector('.platform-options');
+    if (!optionsEl) return;
+    const anchor = optionsEl.querySelector('.platform-divider');
+    platformOrder.forEach((platformId) => {
+      const archData = archEls.get(platformId);
+      if (archData) optionsEl.insertBefore(archData.entry, anchor || null);
+    });
   }
 
   let saveFeedbackTimer = null;
@@ -883,6 +1135,8 @@
   function savePreference() {
     GM_setValue(STORAGE_KEY, selectedCategories);
     GM_setValue(ARCH_STORAGE_KEY, selectedArchitectures);
+    GM_setValue(TYPE_STORAGE_KEY, selectedPackageTypes);
+    GM_setValue(ORDER_STORAGE_KEY, platformOrder);
     GM_setValue(FILTER_SCHEMA_KEY, FILTER_SCHEMA_VERSION);
     if (!saveButtonEl) return;
     saveButtonEl.textContent = '已保存';
@@ -908,7 +1162,7 @@
   function syncPanel() {
     if (!panel) return;
 
-    const { total, visible, counts, archCounts } = getStats();
+    const { total, visible, counts, archCounts, typeCounts } = getStats();
     const filtering = selectedCategories.length > 0;
 
     panel.dataset.filtering = String(filtering);
@@ -946,9 +1200,15 @@
       const archData = archEls.get(platform.id);
       if (!archData) return;
       archData.entry.classList.toggle('selected', active);
+      if (archData.moveButtons) {
+        const orderIndex = platformOrder.indexOf(platform.id);
+        archData.moveButtons.up.disabled = orderIndex <= 0;
+        archData.moveButtons.down.disabled =
+          orderIndex >= platformOrder.length - 1;
+      }
       const platformArchCounts = archCounts[platform.id] || {};
       const activeArchs = getSelectedArchitectures(platform.id);
-      let hasArchOptions = false;
+      let hasChipOptions = false;
 
       ARCHITECTURES[platform.id].forEach((definition) => {
         const chipData = archData.chips.get(definition.id);
@@ -960,13 +1220,23 @@
         chipData.button.classList.toggle('selected', selected);
         chipData.button.setAttribute('aria-pressed', String(selected));
         chipData.countEl.textContent = String(count);
-        if (show) hasArchOptions = true;
+        if (show) hasChipOptions = true;
       });
 
-      const allSelected = activeArchs.length === 0;
-      archData.allChip.classList.toggle('selected', allSelected);
-      archData.allChip.setAttribute('aria-pressed', String(allSelected));
-      archData.archesEl.hidden = !hasArchOptions;
+      const platformTypeCounts = typeCounts[platform.id] || {};
+      const activeTypes = getSelectedPackageTypes(platform.id);
+      archData.typeChips.forEach((chipData, typeId) => {
+        const count = platformTypeCounts[typeId] || 0;
+        const selected = activeTypes.includes(typeId);
+        const show = count > 0 || selected;
+        chipData.button.hidden = !show;
+        chipData.button.classList.toggle('selected', selected);
+        chipData.button.setAttribute('aria-pressed', String(selected));
+        chipData.countEl.textContent = String(count);
+        if (show) hasChipOptions = true;
+      });
+
+      archData.archesEl.hidden = !hasChipOptions;
     });
 
     EXTRA_CATEGORIES.forEach((category) => {
@@ -1035,6 +1305,7 @@
       <div class="platform-options" role="group" aria-label="筛选类别"></div>
       <div class="platform-dropdown-footer">
         <button type="button" class="platform-action" data-action="save">保存为偏好</button>
+        <button type="button" class="platform-action" data-action="reorder">排序</button>
         <button type="button" class="platform-action" data-action="all">显示全部</button>
       </div>
     `;
@@ -1070,7 +1341,23 @@
         event.stopPropagation();
         toggleCategory(category.id);
       });
-      entry.appendChild(option);
+
+      const row = document.createElement('div');
+      row.className = 'platform-row';
+      row.appendChild(option);
+
+      let moveButtons = null;
+      if (PLATFORM_IDS.includes(category.id)) {
+        const move = document.createElement('div');
+        move.className = 'platform-move';
+        const upButton = createMoveButton(category.id, -1, '上移');
+        const downButton = createMoveButton(category.id, 1, '下移');
+        move.appendChild(upButton);
+        move.appendChild(downButton);
+        row.appendChild(move);
+        moveButtons = { up: upButton, down: downButton };
+      }
+      entry.appendChild(row);
 
       if (ARCHITECTURES[category.id]) {
         const archesEl = document.createElement('div');
@@ -1079,20 +1366,7 @@
         const archesInner = document.createElement('div');
         archesInner.className = 'platform-arches-inner';
         archesInner.setAttribute('role', 'group');
-        archesInner.setAttribute('aria-label', `${category.name} 架构`);
-
-        const allChip = document.createElement('button');
-        allChip.type = 'button';
-        allChip.className = 'arch-chip';
-        allChip.dataset.arch = 'all';
-        allChip.textContent = '全部';
-        allChip.title = '清除该平台的架构筛选';
-        allChip.setAttribute('aria-pressed', 'true');
-        allChip.addEventListener('click', (event) => {
-          event.stopPropagation();
-          clearArchitectures(category.id);
-        });
-        archesInner.appendChild(allChip);
+        archesInner.setAttribute('aria-label', `${category.name} 架构与安装类型`);
 
         const chips = new Map();
         ARCHITECTURES[category.id].forEach((definition) => {
@@ -1114,9 +1388,40 @@
           chips.set(definition.id, { button: chip, countEl: chipCountEl });
         });
 
+        const chipsBreak = document.createElement('span');
+        chipsBreak.className = 'chips-break';
+        chipsBreak.setAttribute('aria-hidden', 'true');
+        archesInner.appendChild(chipsBreak);
+
+        const typeChips = new Map();
+        PACKAGE_TYPES.forEach((type) => {
+          const chip = document.createElement('button');
+          chip.type = 'button';
+          chip.className = 'arch-chip';
+          chip.dataset.type = type.id;
+          chip.setAttribute('aria-pressed', 'false');
+          chip.appendChild(document.createTextNode(type.name));
+          const chipCountEl = document.createElement('span');
+          chipCountEl.className = 'arch-chip-count';
+          chipCountEl.textContent = '0';
+          chip.appendChild(chipCountEl);
+          chip.addEventListener('click', (event) => {
+            event.stopPropagation();
+            togglePackageType(category.id, type.id);
+          });
+          archesInner.appendChild(chip);
+          typeChips.set(type.id, { button: chip, countEl: chipCountEl });
+        });
+
         archesEl.appendChild(archesInner);
         entry.appendChild(archesEl);
-        archEls.set(category.id, { entry, archesEl, allChip, chips });
+        archEls.set(category.id, {
+          entry,
+          archesEl,
+          chips,
+          typeChips,
+          moveButtons,
+        });
       }
 
       optionsEl.appendChild(entry);
@@ -1128,11 +1433,22 @@
     saveButtonEl.addEventListener('click', savePreference);
     resetSaveButton();
 
+    const reorderButton = dropdown.querySelector('[data-action="reorder"]');
+    reorderButton.addEventListener('click', () => {
+      const active = panel.dataset.reorder !== 'true';
+      panel.dataset.reorder = String(active);
+      reorderButton.textContent = active ? '完成' : '排序';
+      reorderButton.classList.toggle('active', active);
+      syncPanel();
+    });
+
     dropdown
       .querySelector('[data-action="all"]')
       .addEventListener('click', () => {
         setSelectedCategories([]);
       });
+
+    reorderPlatformEntries();
 
     panel.appendChild(filterButton);
     panel.appendChild(dropdown);
@@ -1258,6 +1574,7 @@
     enhanceReleaseNotes();
     ensurePanel();
     applyFilters();
+    regroupAssets();
   }
 
   function isReleasesPage() {
