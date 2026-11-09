@@ -138,6 +138,16 @@
           /(?:^|[-_.\s])(?:armv[5-8]\w*|armhf|armel|arm)(?=$|[-_.\s])/i,
       },
       {
+        id: 'mips',
+        name: 'MIPS',
+        pattern: /(?:^|[-_.\s])mips(?:el|le)?(?=$|[-_.\s])/i,
+      },
+      {
+        id: 'mips64',
+        name: 'MIPS64',
+        pattern: /(?:^|[-_.\s])mips64(?:el|le)?(?=$|[-_.\s])/i,
+      },
+      {
         id: 'riscv64',
         name: 'RISC-V',
         pattern: /(?:^|[-_.\s])riscv64(?=$|[-_.\s])/i,
@@ -207,8 +217,8 @@
     },
   ];
   const PACKAGE_TYPE_IDS = PACKAGE_TYPES.map((type) => type.id);
-  const PACKAGE_SIDECAR_PATTERN =
-    /\.(?:asc|sig|zsync|sha\d+|sha\d+sum|md5|md5sum)$/i;
+  const PACKAGE_EXCLUDED_PATTERN =
+    /(?:\.(?:asc|sig|zsync|sha\d+|sha\d+sum|md5|md5sum)|\.pkg\.tar\.[a-z0-9]+)$/i;
 
   const STYLES = `
     :root {
@@ -866,7 +876,7 @@
 
   function getPackageTypeMatches(name) {
     const trimmed = name.trim();
-    if (PACKAGE_SIDECAR_PATTERN.test(trimmed)) return [];
+    if (PACKAGE_EXCLUDED_PATTERN.test(trimmed)) return [];
     return PACKAGE_TYPES.filter((type) => type.pattern.test(trimmed)).map(
       (type) => type.id
     );
