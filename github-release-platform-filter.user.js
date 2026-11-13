@@ -2,7 +2,7 @@
 // @name         GitHub发布平台筛选器
 // @name:en      GitHub Release Platform Filter
 // @namespace    https://github.com/eecopilot
-// @version      0.4.5
+// @version      0.4.6
 // @description  按平台、架构与类别筛选GitHub发布资源，优化发布说明显示，适配明暗主题
 // @description:en  Filter GitHub release assets by platform, architecture and category, collapse long release notes, with light/dark theme support
 // @author       EEP
@@ -59,7 +59,7 @@
       name: 'macOS',
       icon: ICONS.apple,
       pattern:
-        /\.(?:dmg|pkg)(?![.\w])|(?:^|[-_.\s])(?:darwin|macos|osx|mac)(?:[-_.\s]|$)|mac(?:os)?[ -]?(?:arm64|x64|universal)/i,
+        /\.(?:dmg|pkg)(?![.\w])|\.app\.tar\.(?:gz|xz|zst)|(?:^|[-_.\s])(?:darwin|macos|osx|mac)(?:[-_.\s]|$)|mac(?:os)?[ -]?(?:arm64|x64|universal)/i,
     },
     {
       id: 'linux',
@@ -218,7 +218,7 @@
       id: 'portable',
       name: '便携版',
       pattern:
-        /(?:^|[-_.\s])(?:portable|standalone|no[-_.]?install)(?=$|[-_.\s])|\.appimage(?=[._]|$)/i,
+        /(?:^|[-_.\s])(?:portable|standalone|no[-_.]?install)(?=$|[-_.\s])|\.appimage(?=[._]|$)|\.app\.tar\.(?:gz|xz|zst)/i,
     },
   ];
   const PACKAGE_TYPE_IDS = PACKAGE_TYPES.map((type) => type.id);

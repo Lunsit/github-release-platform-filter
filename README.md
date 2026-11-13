@@ -59,6 +59,7 @@
 - 修复 GitHub 新类名 `tmp-my-3` 导致的长文折叠失效
 - 适配 `include-fragment` 的 `src` / `data-deferred-src` 两种懒加载写法
 - 修正资源识别：Arch 的 `*.pkg.tar.zst` 不再误判为 macOS，`x86_64` 归入 x64、`x86` 归入 x32，支持 ARM 各版本、MIPS / MIPS64 / mipsle、FreeBSD / Solaris 等标记，签名 / 校验旁路文件与 Arch 包不参与安装包统计，匹配只取文件名并支持更多扩展名
+- macOS 识别支持 Tauri 更新包 `*.app.tar.gz`（含 `.sig`），并计入「便携版」
 - 修复动态加载后不重新筛选、监听器重复注册、内联样式覆盖等问题
 
 ## 许可证
