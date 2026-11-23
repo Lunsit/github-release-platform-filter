@@ -2,7 +2,7 @@
 // @name         GitHub发布平台筛选器
 // @name:en      GitHub Release Platform Filter
 // @namespace    https://github.com/eecopilot
-// @version      0.4.6
+// @version      0.4.7
 // @description  按平台、架构与类别筛选GitHub发布资源，优化发布说明显示，适配明暗主题
 // @description:en  Filter GitHub release assets by platform, architecture and category, collapse long release notes, with light/dark theme support
 // @author       EEP
@@ -224,6 +224,8 @@
   const PACKAGE_TYPE_IDS = PACKAGE_TYPES.map((type) => type.id);
   const PACKAGE_EXCLUDED_PATTERN =
     /(?:\.(?:asc|sig|zsync|sha\d+|sha\d+sum|md5|md5sum)|\.pkg\.tar\.[a-z0-9]+)$/i;
+  const AUXILIARY_ASSET_PATTERN =
+    /(?:\.(?:asc|sig|zsync|sha\d+|sha\d+sum|md5|md5sum)|\.oci-manifest\.json)$/i;
 
   const STYLES = `
     :root {
@@ -921,8 +923,13 @@
     return /^source code\b/i.test(getAssetName(asset).trim());
   }
 
+  function isAuxiliaryAsset(asset) {
+    return AUXILIARY_ASSET_PATTERN.test(getAssetName(asset));
+  }
+
   function getAssetGroupKey(asset) {
     if (isSourceCodeAsset(asset)) return 'source';
+    if (isAuxiliaryAsset(asset)) return 'other';
     const matches = getPlatformMatches(getAssetName(asset));
     for (const platformId of platformOrder) {
       if (matches[platformId]) return platformId;
@@ -989,6 +996,9 @@
     if (isSourceCodeAsset(asset)) {
       return selectedCategories.includes('source');
     }
+    if (isAuxiliaryAsset(asset)) {
+      return selectedCategories.includes('other');
+    }
     const name = getAssetName(asset);
     const matches = getPlatformMatches(name);
     const matchedPlatforms = PLATFORM_IDS.filter((id) => matches[id]);
@@ -1030,6 +1040,8 @@
     assets.forEach((asset) => {
       if (isSourceCodeAsset(asset)) {
         counts.source += 1;
+      } else if (isAuxiliaryAsset(asset)) {
+        counts.other += 1;
       } else {
         const name = getAssetName(asset);
         const matches = getPlatformMatches(name);
